@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: flight-brief-cloud
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python desktop_flight_brief_server.py
+    envVars:
+      - key: FLIGHT_BRIEF_CLOUD_MODE
+        value: "true"
+      - key: FLIGHT_BRIEF_OUTPUT_DIR
+        value: /tmp/flight-brief-output
+      - key: PYTHONUNBUFFERED
+        value: "1"

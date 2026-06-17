@@ -1,0 +1,14 @@
+{
+  "YBBN": {
+    "departure_notes": [
+      "10-7 gate/ramp/taxi: primary gates 75, 80, 81; international terminal/apron is on the south side of the airport.",
+      "10-7 startup/enroute clearance: contact Brisbane Delivery 15 minutes before target off time for pushback/start-up approval; route clearance may be issued during initial Brisbane Delivery contact.",
+      "10-7 pushback/ramp: contact Ground for pushback; two-person pushback procedures are in effect; minimum thrust must be maintained in the ramp area to avoid jet blast damage.",
+      "10-7 parking: various A-VDGS parking systems are in use."
+    ],
+    "arrival_notes": [
+      "10-7 gate/ramp/taxi: primary gates 75, 80, 81; international terminal/apron is on the south side of the airport.",
+      "10-7 parking: various A-VDGS parking systems are in use."
+    ]
+  }
+}

@@ -1,0 +1,947 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Flight Brief" />
+    <meta name="theme-color" content="#0f5e99" />
+    <title>Flight Brief</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #eef2f6;
+        --panel: rgba(255, 255, 255, 0.92);
+        --border: #d4dbe3;
+        --text: #14212f;
+        --muted: #667587;
+        --blue: #0f5e99;
+        --blue-dark: #0b4570;
+        --green: #12805c;
+        --amber: #9f6b00;
+        --shadow: 0 10px 30px rgba(13, 34, 51, 0.08);
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        min-height: 100%;
+        background: linear-gradient(180deg, #dfe8f1 0%, #eef2f6 160px, #eef2f6 100%);
+        color: var(--text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+      body { padding: max(12px, env(safe-area-inset-top)) 12px max(20px, env(safe-area-inset-bottom)); }
+      .app-shell { max-width: 980px; margin: 0 auto; display: grid; gap: 14px; }
+      .topbar, .panel { border: 1px solid var(--border); border-radius: 18px; background: var(--panel); box-shadow: var(--shadow); }
+      .topbar { padding: 16px 16px 14px; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+      .eyebrow, .hero-kicker { margin: 0 0 6px; color: var(--muted); font-size: 12px; letter-spacing: 0.02em; text-transform: uppercase; }
+      h1 { margin: 0; font-size: 28px; line-height: 1.05; color: var(--blue-dark); }
+      .status-pill { flex: 0 0 auto; padding: 8px 12px; border-radius: 999px; background: #e4edf5; color: var(--blue-dark); font-weight: 700; font-size: 13px; }
+      .hero { padding: 16px; display: flex; align-items: end; justify-content: space-between; gap: 14px; }
+      .hero h2 { margin: 0; font-size: 20px; line-height: 1.15; max-width: 30rem; }
+      .hero-meta { color: var(--muted); font-size: 14px; text-align: right; max-width: 20rem; }
+      .form-grid { padding: 14px; display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .field-card { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--border); border-radius: 14px; background: #fff; }
+      .active-file { min-height: 18px; color: var(--muted); font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; }
+      .active-file strong { color: var(--green); }
+      label { font-size: 13px; font-weight: 700; color: var(--blue-dark); }
+      input[type="file"], input[type="text"], input[type="time"] { width: 100%; border: 1px solid var(--border); border-radius: 12px; background: #f9fbfd; padding: 12px 12px; font: inherit; color: var(--text); }
+      input[type="file"]::file-selector-button { border: 0; margin-right: 12px; padding: 9px 12px; border-radius: 10px; background: #dceaf7; color: var(--blue-dark); font-weight: 700; }
+      .actions { grid-column: 1 / -1; display: flex; gap: 10px; }
+      button { border: 0; border-radius: 12px; font: inherit; font-weight: 700; padding: 13px 16px; min-height: 48px; }
+      .primary { background: var(--blue); color: white; flex: 1; }
+      .secondary { background: #edf2f6; color: var(--blue-dark); min-width: 110px; }
+      .result-panel { padding: 14px; display: grid; gap: 12px; }
+      .section-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+      .section-head h3 { margin: 0; color: var(--blue-dark); font-size: 18px; }
+      .muted { color: var(--muted); font-size: 13px; }
+      .result-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+      .result-link { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: #f9fbfd; color: var(--blue-dark); text-decoration: none; font-weight: 700; }
+      .result-link.disabled { opacity: 0.55; pointer-events: none; }
+      .log { margin: 0; padding: 14px; border-radius: 14px; background: #0e2131; color: #e6eef6; min-height: 120px; white-space: pre-wrap; word-break: break-word; line-height: 1.45; font-size: 13px; }
+      .tracker-panel { padding: 14px; display: grid; gap: 12px; }
+      .tracker-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+      .tracker-head h3 { margin: 0; color: var(--blue-dark); font-size: 18px; }
+      .tracker-summary { display: grid; gap: 8px; padding: 14px; border-radius: 14px; background: #f6f9fc; border: 1px solid var(--border); }
+      .tracker-clock { font-size: 28px; font-weight: 800; color: var(--blue-dark); line-height: 1; }
+      .tracker-next { color: var(--text); font-size: 14px; line-height: 1.35; display: grid; gap: 4px; }
+      .tracker-bar { position: relative; height: 58px; border-radius: 16px; border: 1px solid var(--border); background: linear-gradient(180deg, #fff, #f5f8fb); overflow: hidden; }
+      .tracker-rail { position: absolute; left: 16px; right: 16px; top: 29px; height: 4px; background: #cfd9e3; border-radius: 999px; }
+      .tracker-progress { position: absolute; left: 16px; top: 29px; height: 4px; background: var(--blue); border-radius: 999px; }
+      .tracker-dots { position: absolute; inset: 0; }
+      .tracker-dot { position: absolute; top: 20px; transform: translateX(-50%); width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 3px solid #9db0c2; }
+      .tracker-dot.passed { background: #12805c; border-color: #12805c; }
+      .tracker-dot.next { background: #fff; border-color: #0f5e99; box-shadow: 0 0 0 4px rgba(15, 94, 153, 0.14); }
+      .tracker-dot.upcoming { background: #fff; border-color: #9db0c2; }
+      .tracker-dot .tip { position: absolute; left: 50%; top: -14px; transform: translate(-50%, -100%); white-space: nowrap; font-size: 11px; color: var(--muted); }
+      .tracker-list { display: grid; gap: 8px; }
+      .tracker-item { display: grid; gap: 4px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: #fff; }
+      .tracker-item.passed { background: #edf7f1; }
+      .tracker-item.next { background: #eaf3fb; border-color: #a9c6df; }
+      .tracker-item .row { display: flex; justify-content: space-between; gap: 12px; }
+      .tracker-item .label { font-weight: 700; color: var(--blue-dark); }
+      .tracker-item .meta { color: var(--muted); font-size: 12px; }
+      .tracker-empty { color: var(--muted); font-size: 14px; }
+      .resource-panel { padding: 14px; display: grid; gap: 12px; }
+      .resource-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+      .resource-head h3 { margin: 0; color: var(--blue-dark); font-size: 18px; }
+      .resource-form { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .resource-form .field-card { min-width: 0; }
+      .resource-actions { grid-column: 1 / -1; display: flex; gap: 10px; flex-wrap: wrap; }
+      .resource-actions button { min-width: 160px; }
+      .resource-list { display: grid; gap: 8px; }
+      .resource-item { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 12px 14px; border: 1px solid var(--border); border-radius: 14px; background: #fff; }
+      .resource-item.pinned { background: #f2f7fb; border-color: #c9d7e3; }
+      .resource-item .meta { display: grid; gap: 3px; min-width: 0; }
+      .resource-item .name { font-weight: 700; color: var(--blue-dark); overflow-wrap: anywhere; }
+      .resource-item .sub { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+      .resource-item a { flex: 0 0 auto; }
+      .resource-empty { color: var(--muted); font-size: 14px; padding: 8px 2px; }
+      .resource-search { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: end; }
+      .resource-search input { width: 100%; border: 1px solid var(--border); border-radius: 12px; background: #f9fbfd; padding: 12px 12px; font: inherit; color: var(--text); }
+      .resource-search-results { display: grid; gap: 8px; }
+      @media (max-width: 760px) {
+        body { padding-left: 10px; padding-right: 10px; }
+        .topbar, .hero, .section-head { align-items: flex-start; }
+        .hero { flex-direction: column; }
+        .hero-meta { text-align: left; max-width: none; }
+        .form-grid { grid-template-columns: 1fr; }
+        .result-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .resource-form { grid-template-columns: 1fr; }
+        .actions { flex-direction: column; }
+        .resource-actions { flex-direction: column; }
+        .resource-search { grid-template-columns: 1fr; }
+        .resource-item { flex-direction: column; align-items: flex-start; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Brian Hope</p>
+          <h1>Flight Brief</h1>
+        </div>
+        <div class="status-pill" id="status-pill">Checking</div>
+      </header>
+
+      <section class="panel hero">
+        <div class="hero-copy">
+          <p class="hero-kicker">Gold Standard Pilot Brief</p>
+          <h2>Build from the current flight plan, trip kit, and flying ID.</h2>
+        </div>
+        <div class="hero-meta" id="latest-summary">Ready when you are.</div>
+      </section>
+
+      <form class="panel form-grid" id="brief-form">
+        <section class="field-card">
+          <label for="pdf">Flight plan / release PDF</label>
+          <input id="pdf" name="pdf" type="file" accept="application/pdf" />
+          <div class="active-file" id="pdf-active">No active release yet.</div>
+        </section>
+
+        <section class="field-card">
+          <label for="trip_kit">Trip kit / chart package</label>
+          <input id="trip_kit" name="trip_kit" type="file" accept="application/pdf" />
+          <div class="active-file" id="trip-kit-active">No active trip kit yet.</div>
+        </section>
+
+        <section class="field-card">
+          <label for="pairing">Pairing / crew list</label>
+          <input id="pairing" name="pairing" type="file" accept="application/pdf" />
+          <div class="active-file" id="pairing-active">No active pairing yet.</div>
+        </section>
+
+        <section class="field-card">
+          <label for="flying_id">Current flying ID</label>
+          <input id="flying_id" name="flying_id" type="text" placeholder="UA1818" autocomplete="off" />
+        </section>
+
+        <section class="field-card">
+          <label for="pickup_time">Pickup time</label>
+          <input id="pickup_time" name="pickup_time" type="text" placeholder="Local or Z" autocomplete="off" />
+        </section>
+
+        <section class="field-card">
+          <label for="report_time">Report time</label>
+          <input id="report_time" name="report_time" type="text" placeholder="Local or Z" autocomplete="off" />
+        </section>
+
+        <div class="actions">
+          <button class="primary" type="submit" id="generate-btn">Generate & publish</button>
+          <button class="secondary" type="button" id="publish-btn">Publish to iPhone</button>
+          <button class="secondary" type="button" id="refresh-btn">Latest</button>
+        </div>
+      </form>
+
+      <section class="panel resource-panel">
+        <div class="resource-head">
+          <h3>Resources</h3>
+          <span class="muted" id="resources-count">No resources loaded yet.</span>
+        </div>
+        <div class="resource-search">
+          <section class="field-card">
+            <label for="resource-search-input">Search reference files</label>
+            <input id="resource-search-input" type="text" placeholder="ETOPS, drift down, SFO taxi, SELCAL..." autocomplete="off" />
+          </section>
+          <button class="secondary" type="button" id="resource-search-btn">Search</button>
+        </div>
+        <div class="resource-search-results" id="resource-search-results"></div>
+        <div class="resource-form">
+          <section class="field-card">
+            <label for="resources-folder">Resource folder</label>
+            <input id="resources-folder" name="resources-folder" type="file" multiple webkitdirectory directory mozdirectory />
+          </section>
+          <section class="field-card">
+            <label for="resources-files">Resource files</label>
+            <input id="resources-files" name="resources-files" type="file" accept=".pdf,.txt,.md,.docx,.png,.jpg,.jpeg" multiple />
+          </section>
+          <section class="field-card">
+            <label for="resources-note">Use this for manuals, system notes, and quick reference files</label>
+            <input id="resources-note" type="text" value="Choose a folder when supported, or select several files at once." readonly />
+          </section>
+          <div class="resource-actions">
+            <button class="primary" type="button" id="save-resources-btn">Save resources</button>
+            <button class="secondary" type="button" id="refresh-resources-btn">Refresh resources</button>
+          </div>
+        </div>
+        <div class="resource-list" id="resource-list">
+          <div class="resource-empty">Add your 777 flight manual, system notes, and any other reference files here.</div>
+        </div>
+      </section>
+
+      <section class="panel result-panel">
+        <div class="section-head">
+          <h3>Latest result</h3>
+          <span class="muted" id="result-time">No generation yet.</span>
+        </div>
+        <div class="result-grid" id="result-grid">
+          <a class="result-link disabled" href="#" id="txt-link" aria-disabled="true">Open text</a>
+          <a class="result-link disabled" href="#" id="card-link" aria-disabled="true">Open card PDF</a>
+          <a class="result-link disabled" href="#" id="full-link" aria-disabled="true">Open full PDF</a>
+          <button class="result-link disabled" type="button" id="synopsis-btn" disabled>Brief synopsis</button>
+        </div>
+        <pre class="log" id="message-log">Choose the files, fill the flying ID, then generate.</pre>
+      </section>
+
+      <section class="panel tracker-panel">
+        <div class="tracker-head">
+          <h3>Takeoff Tracker</h3>
+          <span class="muted" id="tracker-source">Waiting for timeline data.</span>
+        </div>
+        <div class="field-card" style="padding:12px;">
+          <label for="takeoff_time">Takeoff time</label>
+          <input id="takeoff_time" name="takeoff_time" type="time" />
+        </div>
+        <div class="tracker-summary">
+          <div class="tracker-clock" id="tracker-clock">--:--</div>
+          <div class="tracker-next" id="tracker-next">Set the takeoff time to start the clock.</div>
+        </div>
+        <div class="tracker-bar" id="tracker-bar">
+          <div class="tracker-rail"></div>
+          <div class="tracker-progress" id="tracker-progress" style="width:0%"></div>
+          <div class="tracker-dots" id="tracker-dots"></div>
+        </div>
+        <div class="tracker-list" id="tracker-list">
+          <div class="tracker-empty">Load a brief and enter takeoff time to see the timed EET points here.</div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const form = document.getElementById("brief-form");
+      const statusPill = document.getElementById("status-pill");
+      const latestSummary = document.getElementById("latest-summary");
+      const resultTime = document.getElementById("result-time");
+      const messageLog = document.getElementById("message-log");
+      const generateBtn = document.getElementById("generate-btn");
+      const publishBtn = document.getElementById("publish-btn");
+      const refreshBtn = document.getElementById("refresh-btn");
+      const saveResourcesBtn = document.getElementById("save-resources-btn");
+      const refreshResourcesBtn = document.getElementById("refresh-resources-btn");
+      const resourceList = document.getElementById("resource-list");
+      const resourcesCount = document.getElementById("resources-count");
+      const resourcesFolder = document.getElementById("resources-folder");
+      const resourcesFiles = document.getElementById("resources-files");
+      const resourceSearchInput = document.getElementById("resource-search-input");
+      const resourceSearchBtn = document.getElementById("resource-search-btn");
+      const resourceSearchResults = document.getElementById("resource-search-results");
+      const txtLink = document.getElementById("txt-link");
+      const cardLink = document.getElementById("card-link");
+      const fullLink = document.getElementById("full-link");
+      const synopsisBtn = document.getElementById("synopsis-btn");
+      const pdfInput = document.getElementById("pdf");
+      const tripKitInput = document.getElementById("trip_kit");
+      const pairingInput = document.getElementById("pairing");
+      const pdfActive = document.getElementById("pdf-active");
+      const tripKitActive = document.getElementById("trip-kit-active");
+      const pairingActive = document.getElementById("pairing-active");
+      const pickupInput = document.getElementById("pickup_time");
+      const reportInput = document.getElementById("report_time");
+      const takeoffInput = document.getElementById("takeoff_time");
+      const trackerSource = document.getElementById("tracker-source");
+      const trackerClock = document.getElementById("tracker-clock");
+      const trackerNext = document.getElementById("tracker-next");
+      const trackerProgress = document.getElementById("tracker-progress");
+      const trackerDots = document.getElementById("tracker-dots");
+      const trackerList = document.getElementById("tracker-list");
+      const TAKEOFF_KEY = "flight-brief-takeoff-time-v1";
+      let timelinePoints = [];
+      let currentResult = null;
+      let activeUploads = {};
+
+      const macGenerateLabel = "Generate & publish";
+
+      function setLog(message) {
+        messageLog.textContent = message;
+      }
+
+      function isHostedPhoneApp() {
+        return location.hostname.includes("pages.dev");
+      }
+
+      function isLocalMacApp() {
+        return location.hostname === "127.0.0.1" || location.hostname === "localhost";
+      }
+
+      function isCloudBuilder() {
+        return !isHostedPhoneApp() && !isLocalMacApp();
+      }
+
+      function synopsisViewerUrl(pdfUrl, result = currentResult) {
+        const title = result?.title || result?.source_pdf_name || "Brief Synopsis";
+        return `./synopsis?pdf=${encodeURIComponent(pdfUrl)}&title=${encodeURIComponent(title)}`;
+      }
+
+      function escapeHtml(value) {
+        return String(value || "")
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function activeFileLabel(record, emptyText) {
+        return record?.name ? `<strong>Active:</strong> ${escapeHtml(record.name)}` : escapeHtml(emptyText);
+      }
+
+      function renderActiveUploads() {
+        pdfActive.innerHTML = activeFileLabel(activeUploads.flight_plan, "No active release yet.");
+        tripKitActive.innerHTML = activeFileLabel(activeUploads.trip_kit, "No active trip kit yet.");
+        pairingActive.innerHTML = activeFileLabel(activeUploads.pairing, "No active pairing yet.");
+      }
+
+      function applyActiveUploads(uploads) {
+        activeUploads = uploads || {};
+        renderActiveUploads();
+      }
+
+      function applyGeneratedTimes(result) {
+        if (result?.pickup_time && !pickupInput.value.trim()) pickupInput.value = result.pickup_time;
+        if (result?.report_time && !reportInput.value.trim()) reportInput.value = result.report_time;
+      }
+
+      function buildGenerateFormData() {
+        const data = new FormData();
+        const flightPlan = pdfInput.files[0];
+        if (!flightPlan && !activeUploads.flight_plan?.path) {
+          throw new Error(
+            isCloudBuilder()
+              ? "Choose the flight plan PDF first."
+              : "Choose the flight plan PDF first. After one is active, it will stay active until replaced."
+          );
+        }
+        if (flightPlan) data.append("pdf", flightPlan);
+        const tripKit = tripKitInput.files[0];
+        const pairing = pairingInput.files[0];
+        const flyingId = document.getElementById("flying_id").value.trim();
+        const pickupTime = pickupInput.value.trim();
+        const reportTime = reportInput.value.trim();
+        if (tripKit) data.append("trip_kit", tripKit);
+        if (pairing) data.append("pairing", pairing);
+        if (flyingId) data.append("flying_id", flyingId);
+        if (pickupTime) data.append("pickup_time", pickupTime);
+        if (reportTime) data.append("report_time", reportTime);
+        return data;
+      }
+
+      async function postJson(url, options = {}) {
+        const response = await fetch(url, options);
+        const payload = await response.json();
+        if (!payload.ok) throw new Error(payload.error || "Request failed");
+        return payload;
+      }
+
+      function renderResources(resources) {
+        if (!resourceList || !resourcesCount) {
+          return;
+        }
+        if (!resources || resources.length === 0) {
+          resourcesCount.textContent = "No resources loaded yet.";
+          resourceList.innerHTML = '<div class="resource-empty">Add your 777 flight manual, system notes, and any other reference files here.</div>';
+          return;
+        }
+
+        resourcesCount.textContent = `${resources.length} resource file${resources.length === 1 ? "" : "s"} available.`;
+        resourceList.innerHTML = resources
+          .map((item) => {
+            const sizeKb = item.size ? `${Math.max(1, Math.round(Number(item.size) / 1024))} KB` : "";
+            const meta = [item.display_name || item.name, item.modified, sizeKb].filter(Boolean).join(" • ");
+            return `
+              <div class="resource-item">
+                <div class="meta">
+                  <div class="name">${escapeHtml(item.display_name || item.name)}</div>
+                  <div class="sub">${escapeHtml(meta)}</div>
+                </div>
+                <a class="result-link" href="${escapeHtml(item.url)}" target="_blank" rel="noopener">Open</a>
+              </div>
+            `;
+          })
+          .join("");
+      }
+
+      function renderResourceSearchResults(results, query) {
+        if (!resourceSearchResults) {
+          return;
+        }
+        if (!query) {
+          resourceSearchResults.innerHTML = "";
+          return;
+        }
+        if (!results || results.length === 0) {
+          resourceSearchResults.innerHTML = '<div class="resource-empty">No matching reference files found.</div>';
+          return;
+        }
+        resourceSearchResults.innerHTML = results
+          .map((item) => `
+            <div class="resource-item">
+              <div class="meta">
+                <div class="name">${escapeHtml(item.display_name || item.name)}</div>
+                <div class="sub">${escapeHtml(item.snippet || "Matched file name.")}</div>
+              </div>
+              <a class="result-link" href="${escapeHtml(item.url)}" target="_blank" rel="noopener">Open</a>
+            </div>
+          `)
+          .join("");
+      }
+
+      function loadSavedTakeoff() {
+        const saved = localStorage.getItem(TAKEOFF_KEY);
+        if (saved) {
+          takeoffInput.value = saved.includes("T") ? saved.split("T").pop().slice(0, 5) : saved;
+        }
+      }
+
+      function saveTakeoff() {
+        if (takeoffInput.value) {
+          localStorage.setItem(TAKEOFF_KEY, takeoffInput.value);
+        } else {
+          localStorage.removeItem(TAKEOFF_KEY);
+        }
+      }
+
+      function parseTakeoffTime(value) {
+        if (!value) return null;
+        const match = value.match(/^(\d{1,2}):(\d{2})/);
+        if (!match) return null;
+        const now = new Date();
+        const date = new Date(now);
+        date.setHours(Number(match[1]), Number(match[2]), 0, 0);
+        if (date.getTime() - now.getTime() > 6 * 60 * 60 * 1000) {
+          date.setDate(date.getDate() - 1);
+        }
+        return date;
+      }
+
+      function formatClock(date) {
+        return new Intl.DateTimeFormat(undefined, {
+          hour: "2-digit",
+          minute: "2-digit",
+        }).format(date);
+      }
+
+      function formatClockWithDay(date) {
+        return new Intl.DateTimeFormat(undefined, {
+          hour: "2-digit",
+          minute: "2-digit",
+          weekday: "short",
+        }).format(date);
+      }
+
+      function minutesBetween(a, b) {
+        return Math.round((b.getTime() - a.getTime()) / 60000);
+      }
+
+      function addMinutes(base, minutes) {
+        return new Date(base.getTime() + minutes * 60000);
+      }
+
+      function setLinks(result) {
+        currentResult = result || null;
+        const txtHref = result?.txt_url || result?.text || null;
+        const cardHref = result?.card_pdf_url || result?.pdf || null;
+        const fullHref = result?.full_pdf_url || result?.full_pdf || null;
+        const links = [
+          [txtLink, txtHref || (result ? "/api/download?kind=txt" : null), "Open text"],
+          [cardLink, cardHref || (result ? "/api/download?kind=card" : null), "Open card PDF"],
+          [fullLink, fullHref || (result ? "/api/download?kind=full" : null), "Open output PDF"],
+        ];
+        links.forEach(([el, href, label]) => {
+          if (href) {
+            el.href = href;
+            el.textContent = label;
+            el.classList.remove("disabled");
+            el.removeAttribute("aria-disabled");
+          } else {
+            el.href = "#";
+            el.classList.add("disabled");
+            el.setAttribute("aria-disabled", "true");
+          }
+        });
+        const synopsisReady = Boolean(result?.synopsis);
+        const synopsisDisabled = !result || (isHostedPhoneApp() && !synopsisReady);
+        synopsisBtn.disabled = synopsisDisabled;
+        synopsisBtn.classList.toggle("disabled", synopsisDisabled);
+        synopsisBtn.textContent = "Brief synopsis";
+      }
+
+      function summarize(result) {
+        if (!result) {
+          latestSummary.textContent = "No brief has been generated yet.";
+          resultTime.textContent = "No generation yet.";
+          setLinks(null);
+          return;
+        }
+        latestSummary.textContent = [
+          result.source_pdf_name || "Latest brief",
+          result.created_at ? `Created ${result.created_at}` : null,
+        ].filter(Boolean).join(" • ");
+        resultTime.textContent = result.created_at ? `Created ${result.created_at}` : "Latest result loaded.";
+        latestSummary.textContent += " • tap the buttons below to open it";
+        setLinks(result);
+      }
+
+      function renderTracker() {
+        if (!trackerList || !trackerClock || !trackerNext || !trackerProgress || !trackerDots) {
+          return;
+        }
+
+        const takeoff = parseTakeoffTime(takeoffInput.value);
+        const now = new Date();
+        trackerClock.textContent = formatClock(now);
+
+        if (!timelinePoints.length) {
+          trackerSource.textContent = "Waiting for timeline data.";
+          trackerNext.textContent = "Load a brief and enter takeoff time to start the tracker.";
+          trackerProgress.style.width = "0%";
+          trackerDots.innerHTML = "";
+          trackerList.innerHTML = '<div class="tracker-empty">No timeline data was returned from the brief.</div>';
+          return;
+        }
+
+        trackerSource.textContent = `Timeline loaded: ${timelinePoints.length} points`;
+
+        if (!takeoff) {
+          trackerNext.textContent = "Enter takeoff time after airborne to compute the EET clock.";
+          trackerProgress.style.width = "0%";
+          trackerDots.innerHTML = "";
+          trackerList.innerHTML = timelinePoints
+            .map((point) => `
+              <div class="tracker-item">
+                <div class="row">
+                  <div class="label">${point.eet} EET - ${point.event}</div>
+                  <div class="meta">${point.fuel_alt}</div>
+                </div>
+                <div class="meta">${point.action}</div>
+              </div>
+            `)
+            .join("");
+          return;
+        }
+
+        const ordered = [...timelinePoints].sort((a, b) => a.minutes - b.minutes);
+        const maxMinutes = Math.max(ordered[ordered.length - 1].minutes, 1);
+        const elapsed = minutesBetween(takeoff, now);
+        const elapsedPct = Math.max(0, Math.min(100, (elapsed / maxMinutes) * 100));
+        trackerProgress.style.width = `${elapsedPct}%`;
+
+        const nextPoint = ordered.find((point) => point.minutes >= elapsed) || ordered[ordered.length - 1];
+        const nextDelta = nextPoint.minutes - elapsed;
+        const nextEta = addMinutes(takeoff, nextPoint.minutes);
+        trackerNext.innerHTML = `
+          <div><strong>${nextPoint.event}</strong> at ${nextPoint.eet} EET</div>
+          <div>${nextDelta >= 0
+            ? `Next point in ${nextDelta} min, at ${formatClock(nextEta)}`
+            : `Next point passed ${Math.abs(nextDelta)} min ago`}</div>
+          <div>Takeoff at ${formatClockWithDay(takeoff)} | elapsed ${Math.max(0, elapsed)} min</div>
+        `;
+
+        trackerDots.innerHTML = ordered
+          .map((point) => {
+            const pct = (point.minutes / maxMinutes) * 100;
+            const delta = point.minutes - elapsed;
+            const status = delta <= -1 ? "passed" : delta <= 10 ? "next" : "upcoming";
+            const eta = addMinutes(takeoff, point.minutes);
+            return `
+              <div class="tracker-dot ${status}" style="left:${pct}%">
+                <span class="tip">${point.eet}</span>
+              </div>
+            `;
+          })
+          .join("");
+
+        trackerList.innerHTML = ordered
+          .map((point) => {
+            const eta = addMinutes(takeoff, point.minutes);
+            const delta = point.minutes - elapsed;
+            const status = delta <= -1 ? "passed" : delta <= 10 ? "next" : "upcoming";
+            const relative = delta > 0 ? `in ${delta} min` : `${Math.abs(delta)} min ago`;
+            return `
+              <div class="tracker-item ${status}">
+                <div class="row">
+                  <div class="label">${point.eet} EET - ${point.event}</div>
+                  <div class="meta">${relative} • ${formatClock(eta)}</div>
+                </div>
+                <div class="meta">${point.fuel_alt}</div>
+                <div class="meta">${point.action}</div>
+              </div>
+            `;
+          })
+          .join("");
+      }
+
+      async function loadTimeline() {
+        try {
+          const res = await fetch("/api/timeline");
+          const data = await res.json();
+          if (!data.ok) {
+            throw new Error(data.error || "No timeline data");
+          }
+          timelinePoints = (data.points || [])
+            .map((point) => ({ ...point, minutes: Number(point.minutes) }))
+            .filter((point) => Number.isFinite(point.minutes))
+            .sort((a, b) => a.minutes - b.minutes);
+          trackerSource.textContent = data.source_name || "Timeline loaded";
+          renderTracker();
+        } catch (error) {
+          trackerSource.textContent = "Timeline unavailable";
+          timelinePoints = [];
+          renderTracker();
+        }
+      }
+
+      async function loadHealth() {
+        try {
+          const res = await fetch("/api/health");
+          const data = await res.json();
+          if (data.ok) {
+            statusPill.textContent = "Online";
+            statusPill.style.background = "#e4f3ee";
+            statusPill.style.color = "#12805c";
+            return;
+          }
+          throw new Error(data.error || "Offline");
+        } catch (error) {
+          statusPill.textContent = "Offline";
+          statusPill.style.background = "#f7e7e7";
+          statusPill.style.color = "#9c2f2f";
+        }
+      }
+
+      async function loadLatest() {
+        const loadStaticLatest = async () => {
+          const catalogRes = await fetch("./briefs.json", { cache: "no-store" });
+          const catalog = await catalogRes.json();
+          const latest = Array.isArray(catalog) ? catalog[0] : null;
+          if (!latest) throw new Error("No saved brief catalog found.");
+          const latestResult = {
+            ...latest,
+            source_pdf_name: latest.title || "Latest brief",
+            txt_url: latest.text,
+            card_pdf_url: latest.pdf,
+            full_pdf_url: latest.full_pdf,
+          };
+          summarize(latestResult);
+          applyGeneratedTimes(latestResult);
+          setLog(`Loaded saved phone brief: ${latest.title || "latest brief"}`);
+          timelinePoints = (latest.timeline_points || [])
+            .map((point) => ({ ...point, minutes: Number(point.minutes) }))
+            .filter((point) => Number.isFinite(point.minutes))
+            .sort((a, b) => a.minutes - b.minutes);
+          renderTracker();
+        };
+
+        if (isHostedPhoneApp()) {
+          try {
+            await loadStaticLatest();
+            applyActiveUploads({});
+            return;
+          } catch (error) {
+            setLog(`Could not load saved phone brief. ${error.message}`);
+            return;
+          }
+        }
+
+        try {
+          const res = await fetch("/api/latest");
+          const data = await res.json();
+          if (data.ok) {
+            applyActiveUploads(data.active_uploads || data.latest?.active_uploads || data.latest?.uploads || {});
+            summarize(data.latest);
+            applyGeneratedTimes(data.latest);
+            setLog(data.latest ? `Loaded latest brief: ${data.latest.source_pdf_name || "unknown file"}` : "No prior result found.");
+            await loadTimeline();
+            return;
+          }
+          setLog(data.error || "No saved result found.");
+          await loadTimeline();
+        } catch (error) {
+          try {
+            await loadStaticLatest();
+            return;
+          } catch (catalogError) {
+            setLog(`Could not load the latest result. ${error.message}`);
+            await loadTimeline();
+          }
+        }
+      }
+
+      async function loadResources() {
+        try {
+          const res = await fetch("/api/resources");
+          const data = await res.json();
+          if (data.ok) {
+            renderResources(data.resources || []);
+            return;
+          }
+          renderResources([]);
+          resourcesCount.textContent = data.error || "Could not load resources.";
+        } catch (error) {
+          renderResources([]);
+          resourcesCount.textContent = isHostedPhoneApp()
+            ? "Resources are saved from the desktop app."
+            : `Could not load resources. ${error.message}`;
+        }
+      }
+
+      function selectedResourceFiles() {
+        return [
+          ...Array.from(resourcesFolder?.files || []),
+          ...Array.from(resourcesFiles?.files || []),
+        ];
+      }
+
+      async function searchResources() {
+        const query = resourceSearchInput.value.trim();
+        if (!query) {
+          renderResourceSearchResults([], "");
+          setLog("Enter a reference search term first.");
+          return;
+        }
+
+        resourceSearchBtn.disabled = true;
+        resourceSearchBtn.textContent = "Searching...";
+        try {
+          const res = await fetch(`/api/resources/search?q=${encodeURIComponent(query)}`);
+          const data = await res.json();
+          if (!data.ok) {
+            throw new Error(data.error || "Search failed");
+          }
+          renderResourceSearchResults(data.results || [], query);
+          setLog(`Reference search: ${data.results?.length || 0} result(s) for "${query}".`);
+        } catch (error) {
+          renderResourceSearchResults([], query);
+          setLog(
+            isHostedPhoneApp()
+              ? "Reference search works in the desktop app after resources are uploaded there."
+              : `Reference search failed.\n${error.message}`
+          );
+        } finally {
+          resourceSearchBtn.disabled = false;
+          resourceSearchBtn.textContent = "Search";
+        }
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (isHostedPhoneApp()) {
+          generateBtn.disabled = false;
+          generateBtn.textContent = "View published brief";
+          setLog("The iPhone page is for viewing published briefs. Generate the brief in the Mac app, then tap Publish to iPhone. Files selected here stay on the phone and cannot be processed by the Mac helper.");
+          await loadLatest();
+          return;
+        }
+        let data;
+        try {
+          data = buildGenerateFormData();
+        } catch (error) {
+          setLog(error.message);
+          return;
+        }
+        generateBtn.disabled = true;
+        publishBtn.disabled = true;
+        generateBtn.textContent = "Generating...";
+        setLog("Generating brief...");
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 180000);
+        try {
+          const payload = await postJson("/api/generate", {
+            method: "POST",
+            body: data,
+            signal: controller.signal,
+          });
+          applyActiveUploads(payload.result?.active_uploads || payload.result?.uploads || activeUploads);
+          applyGeneratedTimes(payload.result);
+          summarize(payload.result);
+          await loadTimeline();
+          if (isLocalMacApp()) {
+            setLog("Brief generated. Publishing to iPhone/iPad...");
+            generateBtn.textContent = "Publishing...";
+            const publishPayload = await postJson("/api/publish", { method: "POST" });
+            const lines = [
+              "Brief generated and published to iPhone/iPad.",
+              publishPayload.phone_url || "",
+              publishPayload.preview_url ? `Preview: ${publishPayload.preview_url}` : "",
+            ].filter(Boolean);
+            setLog(lines.join("\n"));
+          } else {
+            setLog("Brief generated. Open the card, full brief, or synopsis below.");
+          }
+        } catch (error) {
+          const message = error.name === "AbortError"
+            ? "Generation timed out before the app heard back. Refresh, then press Latest or Generate again. Your active files are still saved."
+            : `Generation failed.\n${error.message}`;
+          setLog(message);
+        } finally {
+          clearTimeout(timeoutId);
+          generateBtn.disabled = false;
+          publishBtn.disabled = false;
+          generateBtn.textContent = isCloudBuilder() ? "Generate brief" : macGenerateLabel;
+        }
+      });
+
+      async function publishToPhone() {
+        publishBtn.disabled = true;
+        publishBtn.textContent = "Publishing...";
+        setLog("Publishing latest brief to iPhone...");
+        try {
+          const payload = await postJson("/api/publish", { method: "POST" });
+          const lines = [
+            payload.message || "Published to iPhone.",
+            payload.phone_url || "",
+            payload.preview_url ? `Preview: ${payload.preview_url}` : "",
+          ].filter(Boolean);
+          setLog(lines.join("\n"));
+        } catch (error) {
+          setLog(`Publish failed.\n${error.message}`);
+        } finally {
+          publishBtn.disabled = false;
+          publishBtn.textContent = "Publish to iPhone";
+        }
+      }
+
+      async function buildSynopsis() {
+        if (isHostedPhoneApp()) {
+          if (currentResult?.synopsis) window.open(synopsisViewerUrl(currentResult.synopsis), "_blank", "noopener");
+          return;
+        }
+        synopsisBtn.disabled = true;
+        synopsisBtn.textContent = "Building...";
+        setLog("Building brief synopsis...");
+        try {
+          const response = await fetch("/api/synopsis", { method: "POST" });
+          const payload = await response.json();
+          if (!payload.ok) throw new Error(payload.error || "Synopsis failed");
+          if (currentResult && payload.synopsis_static_url) currentResult.synopsis = payload.synopsis_static_url;
+          setLog([payload.message || "Brief synopsis created.", payload.synopsis_url || ""].filter(Boolean).join("\n"));
+          if (payload.synopsis_url) window.open(synopsisViewerUrl(payload.synopsis_url), "_blank", "noopener");
+        } catch (error) {
+          setLog(`Synopsis failed.\n${error.message}`);
+        } finally {
+          synopsisBtn.disabled = isHostedPhoneApp();
+          synopsisBtn.classList.toggle("disabled", isHostedPhoneApp());
+          synopsisBtn.textContent = isHostedPhoneApp() ? "Mac only" : "Brief synopsis";
+        }
+      }
+
+      refreshBtn.addEventListener("click", loadLatest);
+      publishBtn.addEventListener("click", publishToPhone);
+      synopsisBtn.addEventListener("click", buildSynopsis);
+      refreshResourcesBtn.addEventListener("click", loadResources);
+      resourceSearchBtn.addEventListener("click", searchResources);
+      resourceSearchInput.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          searchResources();
+        }
+      });
+      saveResourcesBtn.addEventListener("click", async () => {
+        const files = selectedResourceFiles();
+        if (!files.length) {
+          setLog("Choose a resource folder or one or more resource files first.");
+          return;
+        }
+
+        const payload = new FormData();
+        files.forEach((file) => {
+          payload.append("resources", file, file.webkitRelativePath || file.name);
+        });
+
+        saveResourcesBtn.disabled = true;
+        saveResourcesBtn.textContent = "Saving...";
+        setLog("Saving resources...");
+
+        try {
+          const response = await fetch("/api/resources", {
+            method: "POST",
+            body: payload,
+          });
+          const data = await response.json();
+          if (!data.ok) {
+            throw new Error(data.error || "Could not save resources");
+          }
+          setLog(data.message || "Resources saved.");
+          resourcesFolder.value = "";
+          resourcesFiles.value = "";
+          await loadResources();
+        } catch (error) {
+          setLog(`Resource upload failed.\n${error.message}`);
+        } finally {
+          saveResourcesBtn.disabled = false;
+          saveResourcesBtn.textContent = "Save resources";
+        }
+      });
+      takeoffInput.addEventListener("change", () => {
+        saveTakeoff();
+        renderTracker();
+      });
+      takeoffInput.addEventListener("input", () => {
+        saveTakeoff();
+        renderTracker();
+      });
+
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", () => {
+          navigator.serviceWorker.register("/sw.js").catch(() => {});
+        });
+      }
+
+      loadSavedTakeoff();
+      if (isHostedPhoneApp()) {
+        generateBtn.textContent = "View published brief";
+        publishBtn.disabled = true;
+        publishBtn.textContent = "Mac only";
+        publishBtn.hidden = true;
+      } else if (isCloudBuilder()) {
+        generateBtn.textContent = "Generate brief";
+        publishBtn.disabled = true;
+        publishBtn.hidden = true;
+      }
+      loadHealth();
+      loadLatest();
+      loadResources();
+      setInterval(renderTracker, 1000);
+    </script>
+  </body>
+</html>
