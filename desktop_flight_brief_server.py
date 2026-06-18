@@ -223,6 +223,24 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.NO_CONTENT)
         self.end_headers()
 
+    def do_HEAD(self) -> None:
+        parsed = urlparse(self.path)
+        if parsed.path in {"/api/health", "/"}:
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "application/json" if parsed.path == "/api/health" else "text/html")
+            self.end_headers()
+            return
+        path = STATIC_FILES.get(parsed.path, WEB_APP_DIR / "index.html")
+        if path.exists() and path.is_file():
+            mime, _ = mimetypes.guess_type(path.name)
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", mime or "application/octet-stream")
+            self.send_header("Content-Length", str(path.stat().st_size))
+            self.end_headers()
+            return
+        self.send_response(HTTPStatus.NOT_FOUND)
+        self.end_headers()
+
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         if parsed.path == "/api/download":
