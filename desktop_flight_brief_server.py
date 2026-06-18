@@ -773,6 +773,20 @@ class Handler(BaseHTTPRequestHandler):
                 y = draw_wrapped("No item extracted. Verify against the OFP.", x, y, width, use_font, muted, max_lines=2)
             return y
 
+        def compact_list(items: list[str], x: int, y: int, width: int, limit: int, accent=blue) -> int:
+            count = 0
+            for item in [normalize_space(str(item or "")) for item in items if normalize_space(str(item or ""))]:
+                if count >= limit:
+                    break
+                draw.ellipse((x, y + 8, x + 8, y + 16), fill=accent)
+                draw.text((x + 18, y + 2), ellipsize(item, font_tiny_bold, width - 18), fill=ink, font=font_tiny_bold)
+                y += 28
+                count += 1
+            if count == 0:
+                draw.text((x, y), "Verify against OFP.", fill=muted, font=font_tiny_bold)
+                y += 28
+            return y
+
         def get_list(key: str) -> list[str]:
             value = record.get(key)
             return value if isinstance(value, list) else []
@@ -994,26 +1008,16 @@ class Handler(BaseHTTPRequestHandler):
             title = titles[index]
             return f"{title} ({index + 1}/{len(titles)})", prompts.get(title, [])
 
-        W, H = 3300, 2100
+        W, H = 3600, 2200
         sheet = Image.new("RGB", (W, H), page_bg)
         draw = ImageDraw.Draw(sheet)
         for band in range(0, H, 22):
             shade = 244 + (band // 22) % 2
             draw.rectangle((0, band, W, band + 22), fill=(shade, min(250, shade + 2), min(253, shade + 5)))
 
-        margin = 44
+        margin = 46
         gap = 24
-        header_h = 178
-        footer_h = 42
-        card_w = int((W - margin * 2 - gap * 4) / 5)
-        card_h = int((H - header_h - footer_h - gap * 3) / 2)
-        cards: list[tuple[int, int, int, int]] = []
-        for row in range(2):
-            for col in range(5):
-                x = margin + col * (card_w + gap)
-                y = header_h + gap + row * (card_h + gap)
-                cards.append((x, y, x + card_w, y + card_h))
-
+        header_h = 190
         draw.rounded_rectangle((margin, 28, W - margin, header_h - 12), radius=20, fill=navy)
         title = f"{str(record.get('flight') or 'FLIGHT').replace(' ', '')}  {record.get('route') or ''}".strip()
         draw.text((margin + 34, 48), title, fill=white, font=font_title)
@@ -1024,7 +1028,23 @@ class Handler(BaseHTTPRequestHandler):
         draw.rounded_rectangle((W - margin - sw - 56, 64, W - margin - 26, 124), radius=15, fill=(15, 118, 77))
         draw.text((W - margin - sw - 36, 82), status_text, fill=white, font=font_body_bold)
 
-        x, y, x2, y2 = panel(cards[0], "1  Flight Snapshot", navy)
+        top_y = header_h + 24
+        top_h = 900
+        bottom_y = top_y + top_h + gap
+        bottom_h = H - bottom_y - 62
+        left_w = 670
+        right_w = 760
+        center_w = W - margin * 2 - gap * 2 - left_w - right_w
+        left_rect = (margin, top_y, margin + left_w, top_y + top_h)
+        center_rect = (left_rect[2] + gap, top_y, left_rect[2] + gap + center_w, top_y + top_h)
+        right_rect = (center_rect[2] + gap, top_y, W - margin, top_y + top_h)
+        bottom_w = int((W - margin * 2 - gap * 4) / 5)
+        bottom_cards = [
+            (margin + index * (bottom_w + gap), bottom_y, margin + index * (bottom_w + gap) + bottom_w, bottom_y + bottom_h)
+            for index in range(5)
+        ]
+
+        x, y, x2, y2 = panel(left_rect, "1  Flight Snapshot", navy)
         draw.text((x, y), record.get("route") or "--", fill=navy, font=font_title)
         y += 72
         badge_w = max(142, int((x2 - x - 24) / 3))
@@ -1061,7 +1081,52 @@ class Handler(BaseHTTPRequestHandler):
             draw.text((x + 12, cy), ellipsize(line, font_small_bold, x2 - x - 24), fill=ink, font=font_small_bold)
             cy += 26
 
-        x, y, x2, y2 = panel(cards[1], "2  PA / Cabin", blue)
+        x, y, x2, y2 = panel(center_rect, "2  Visual Flight Board", navy)
+        draw_route_map((x, y, x2, y + 390), weather=True, title="Route / Weather / ETOPS Picture")
+        y += 412
+        draw_timeline_rail((x, y, x2, y + 150))
+        y += 172
+        mini_gap = 18
+        mini_w = int((x2 - x - mini_gap * 2) / 3)
+        draw_fuel_ladder((x, y, x + mini_w, y2))
+        mx = x + mini_w + mini_gap
+        draw.rounded_rectangle((mx, y, mx + mini_w, y2), radius=14, fill=(247, 250, 253), outline=(220, 229, 237))
+        draw.text((mx + 16, y + 12), "Critical Times", fill=blue, font=font_h2)
+        time_items = []
+        for pattern in (r"T/O", r"ETOPS Entry", r"CP-1", r"ETOPS Exit", r"\bIN\b|LDG"):
+            point = first_matching_timeline(pattern)
+            if point:
+                time_items.append(f"{point.get('eet')}  {point.get('event')}  {point.get('fuel_alt')}")
+        compact_list(time_items, mx + 18, y + 56, mini_w - 36, 4, blue)
+        mx2 = mx + mini_w + mini_gap
+        draw.rounded_rectangle((mx2, y, x2, y2), radius=14, fill=light_amber, outline=(236, 211, 166))
+        draw.text((mx2 + 16, y + 12), "What To Watch", fill=amber, font=font_h2)
+        watch_items = (get_list("top_threats") + get_list("dispatcher_notes") + get_list("arrival_brief_points"))[:5]
+        compact_list(watch_items, mx2 + 18, y + 56, x2 - mx2 - 36, 4, amber)
+
+        x, y, x2, y2 = panel(right_rect, "3  Threats / ETOPS", red, (255, 252, 252))
+        draw.text((x, y), "Threats First", fill=red, font=font_h2)
+        y = bullet_list(get_list("top_threats") + get_list("dispatcher_notes"), x, y + 38, x2 - x, 5, red, font_small) + 10
+        draw.rounded_rectangle((x, y, x2, y + 145), radius=12, fill=light_blue, outline=(190, 211, 235))
+        draw.text((x + 14, y + 14), "ETOPS / Diversion Pair", fill=blue, font=font_h2)
+        cp_text = "; ".join(get_list("etops_cp_details")[:2]) or "Verify CP details in OFP."
+        draw_wrapped(cp_text, x + 14, y + 50, x2 - x - 28, font_small, ink, max_lines=3)
+        y += 164
+        badge_w = max(150, int((x2 - x - 24) / 3))
+        badge(x, y, "FAR", str(record.get("far_reserve_fuel") or "--"), red, badge_w)
+        badge(x + badge_w + 12, y, "Consv", str(record.get("conservative_fuel") or "--"), green, badge_w)
+        badge(x + (badge_w + 12) * 2, y, "Pair", " / ".join(get_list("etops_airports")[:2]) or "--", blue, badge_w)
+        y += 94
+        draw.rounded_rectangle((x, y, x2, y2), radius=12, fill=(247, 250, 253), outline=(220, 229, 237))
+        draw.text((x + 14, y + 14), "Key Checkpoints", fill=blue, font=font_h2)
+        checkpoint_items = []
+        for pattern in (r"ETOPS Entry", r"CP-1", r"ETOPS Exit", r"\bIN\b|LDG"):
+            point = first_matching_timeline(pattern)
+            if point:
+                checkpoint_items.append(f"{point.get('event')}  {point.get('eet')}  {point.get('fuel_alt')}")
+        bullet_list(checkpoint_items, x + 16, y + 52, x2 - x - 32, 4, blue, font_small)
+
+        x, y, x2, y2 = panel(bottom_cards[0], "4  PA / Cabin", blue)
         pa = [
             f"Welcome aboard {str(record.get('flight') or 'this flight').replace('UAL', 'United')} to {record.get('destination_icao') or 'destination'}.",
             f"Planned airborne time about {record.get('block') or '--'} with arrival near {record.get('eta_local_time') or record.get('eta') or '--'}.",
@@ -1076,63 +1141,26 @@ class Handler(BaseHTTPRequestHandler):
         draw.text((x, y), "Cabin Notes", fill=blue, font=font_h2)
         bullet_list(get_list("fa_discussion_points"), x, y + 34, x2 - x, 4, blue, font_small)
 
-        x, y, x2, y2 = panel(cards[2], "3  Threats First", red, (255, 252, 252))
-        y = bullet_list(get_list("top_threats") + get_list("dispatcher_notes"), x, y, x2 - x, 6, red, font_small)
-        dep_top = y + 8
-        draw.rounded_rectangle((x, dep_top, x2, dep_top + 128), radius=12, fill=light_amber, outline=(236, 211, 166))
-        draw.text((x + 12, dep_top + 12), "Departure Brief", fill=amber, font=font_h2)
+        x, y, x2, y2 = panel(bottom_cards[1], "5  Departure", amber)
+        draw.rounded_rectangle((x, y, x2, y + 92), radius=12, fill=light_amber, outline=(236, 211, 166))
+        draw.text((x + 14, y + 14), "Departure Brief", fill=amber, font=font_h2)
         dep = f"RWY {record.get('departure_runway') or '--'} / {record.get('departure_sid') or '--'}; step climb {', '.join(get_list('step_climbs')[:2]) or 'verify'}."
-        draw_wrapped(dep, x + 12, dep_top + 44, x2 - x - 24, font_small, ink, max_lines=3)
-        cap_top = dep_top + 146
-        draw.text((x, cap_top), "Captain / PF Brief", fill=blue, font=font_h2)
-        bullet_list(get_list("captain_discussion_points") + get_list("pilot_flying_points"), x, cap_top + 34, x2 - x, 4, blue, font_tiny)
+        draw_wrapped(dep, x + 14, y + 48, x2 - x - 28, font_small, ink, max_lines=2)
+        y += 112
+        draw.text((x, y), "Captain / PF", fill=blue, font=font_h2)
+        bullet_list(get_list("captain_discussion_points") + get_list("pilot_flying_points"), x, y + 34, x2 - x, 6, blue, font_small)
 
-        x, y, x2, y2 = panel(cards[3], "4  Timeline / Fuel", navy)
-        draw_timeline_rail((x, y, x2, y + 162))
-        y += 184
-        y = draw_timeline(x, y, x2 - x, 5) + 10
-        badge_w = max(142, int((x2 - x - 24) / 3))
-        badge(x, y, "T/O", timeline_value(r"T/O", "--"), green, badge_w)
-        badge(x + badge_w + 12, y, "CP-1", timeline_time(r"CP-1", "--"), amber, badge_w)
-        badge(x + (badge_w + 12) * 2, y, "LDG", timeline_value(r"LDG|\bIN\b", "--"), green, badge_w)
-
-        x, y, x2, y2 = panel(cards[4], "5  ETOPS / Diversion", blue)
-        draw_route_map((x, y, x2, y + 285))
-        y += 306
-        cp_text = "; ".join(get_list("etops_cp_details")[:2]) or "Verify CP details in OFP."
-        y = draw_wrapped(cp_text, x, y, x2 - x, font_small, ink, max_lines=3) + 8
-        badge_w = max(134, int((x2 - x - 24) / 3))
-        badge(x, y, "FAR", str(record.get("far_reserve_fuel") or "--"), red, badge_w)
-        badge(x + badge_w + 12, y, "Consv", str(record.get("conservative_fuel") or "--"), green, badge_w)
-        badge(x + (badge_w + 12) * 2, y, "Pair", " / ".join(get_list("etops_airports")[:2]) or "--", blue, badge_w)
-        y += 94
-        draw.rounded_rectangle((x, y, x2, y2), radius=12, fill=light_blue, outline=(190, 211, 235))
-        draw.text((x + 12, y + 14), "Key Checkpoints", fill=blue, font=font_h2)
-        checkpoint_items = []
-        for pattern in (r"ETOPS Entry", r"CP-1", r"ETOPS Exit", r"\bIN\b|LDG"):
-            point = first_matching_timeline(pattern)
-            if point:
-                checkpoint_items.append(f"{point.get('event')}  {point.get('eet')}  {point.get('fuel_alt')}")
-        bullet_list(checkpoint_items, x + 12, y + 50, x2 - x - 24, 4, blue, font_small)
-
-        x, y, x2, y2 = panel(cards[5], "6  Route / Weather", blue)
-        draw_route_map((x, y, x2, y + 250), weather=True, title="Route / Weather Overlay")
-        y += 272
-        weather_items = [item for item in get_list("dispatcher_notes") if re.search(r"TURB|WX|WIND|WEATHER|CB|TS|FL", item, re.I)]
-        y = bullet_list(weather_items or get_list("dispatcher_notes"), x, y, x2 - x, 3, amber, font_small)
-        draw_fuel_ladder((x, y + 8, x2, y2))
-
-        x, y, x2, y2 = panel(cards[6], "7  Arrival Plan", navy)
+        x, y, x2, y2 = panel(bottom_cards[2], "6  Arrival Plan", navy)
         badge_w = max(142, int((x2 - x - 24) / 3))
         badge(x, y, "Airport", str(record.get("destination_icao") or "--"), blue, badge_w)
         badge(x + badge_w + 12, y, "Runway", str(record.get("arrival_runway") or "--"), blue, badge_w)
         badge(x + (badge_w + 12) * 2, y, "STAR", str(record.get("arrival_star") or "--"), blue, badge_w)
         y += 94
         y = bullet_list(get_list("arrival_brief_points"), x, y, x2 - x, 5, green, font_small)
-        draw.rounded_rectangle((x, y + 4, x2, y + 90), radius=12, fill=light_green, outline=(190, 224, 205))
+        draw.rounded_rectangle((x, y + 4, x2, min(y2, y + 96)), radius=12, fill=light_green, outline=(190, 224, 205))
         draw_wrapped("Stable gates: 1500 gear down, 1000 checklist/speed complete, 500 stable call.", x + 12, y + 18, x2 - x - 24, font_small_bold, green, max_lines=3)
 
-        x, y, x2, y2 = panel(cards[7], "8  Operational Review", blue)
+        x, y, x2, y2 = panel(bottom_cards[3], "7  Operational Review", blue)
         half = int((y2 - y - 18) / 2)
         draw_procedure_chain(
             (x, y, x2, y + half),
@@ -1147,20 +1175,15 @@ class Handler(BaseHTTPRequestHandler):
             amber,
         )
 
-        x, y, x2, y2 = panel(cards[8], "9  777 Knowledge", green)
-        system_title, prompts = system_focus()
-        draw.rounded_rectangle((x, y, x2, y + 74), radius=12, fill=light_green, outline=(190, 224, 205))
-        draw.text((x + 12, y + 13), "Today's System", fill=green, font=font_h2)
-        draw.text((x + 12, y + 43), ellipsize(system_title, font_body_bold, x2 - x - 24), fill=ink, font=font_body_bold)
-        y += 94
-        y = bullet_list(prompts, x, y, x2 - x, 4, green, font_body)
-        draw.rounded_rectangle((x, y + 8, x2, y + 102), radius=12, fill=light_red, outline=(238, 197, 197))
-        draw.text((x + 12, y + 20), "Knowledge Validation", fill=red, font=font_h2)
-        draw_wrapped("Below 1,000 feet AFE, approach path corrections must be coordinated and authoritative.", x + 12, y + 52, x2 - x - 24, font_small, ink, max_lines=2)
-
-        x, y, x2, y2 = panel(cards[9], "10  Captain's Corner", navy)
+        x, y, x2, y2 = panel(bottom_cards[4], "8  Captain's Corner", navy)
         draw_status_matrix((x, y, x2, y + 250))
         ay = y + 268
+        system_title, prompts = system_focus()
+        draw.rounded_rectangle((x, ay, x2, ay + 150), radius=12, fill=light_green, outline=(190, 224, 205))
+        draw.text((x + 12, ay + 14), "Today's System", fill=green, font=font_h2)
+        draw.text((x + 12, ay + 44), ellipsize(system_title, font_body_bold, x2 - x - 24), fill=ink, font=font_body_bold)
+        bullet_list(prompts, x + 12, ay + 78, x2 - x - 24, 3, green, font_tiny)
+        ay += 170
         draw.rounded_rectangle((x, ay, x2, y2), radius=12, fill=light_amber, outline=(236, 211, 166))
         draw.text((x + 12, ay + 14), "Final Takeaway", fill=amber, font=font_h2)
         destination = record.get("destination_icao") or record.get("destination") or "destination"
@@ -1169,9 +1192,9 @@ class Handler(BaseHTTPRequestHandler):
             f"{record.get('route') or 'This trip'}: protect fuel checks and route monitoring, "
             f"keep {threat} in view, and set up a disciplined {destination} arrival."
         )
-        draw_wrapped(takeaway, x + 12, ay + 48, x2 - x - 24, font_small, ink, max_lines=5)
+        draw_wrapped(takeaway, x + 12, ay + 48, x2 - x - 24, font_small, ink, max_lines=6)
 
-        footer = "Gold Standard Pilot Brief synopsis from latest uploaded docs. Visual reference only. Verify against official OFP, FMS, ATIS, NOTAMs, charts, and company manuals."
+        footer = "Gold Standard Pilot Brief visual board from latest uploaded docs. Visual reference only. Verify against official OFP, FMS, ATIS, NOTAMs, charts, and company manuals."
         draw.text((margin, H - 28), footer, fill=muted, font=font_small)
         stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
         draw.text((W - margin - text_size(stamp, font_small)[0], H - 28), stamp, fill=muted, font=font_small)
