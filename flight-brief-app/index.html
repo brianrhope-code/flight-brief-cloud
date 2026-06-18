@@ -607,6 +607,9 @@
         ].filter(Boolean).join(" • ");
         resultTime.textContent = result.created_at ? `Created ${result.created_at}` : "Latest result loaded.";
         latestSummary.textContent += " • tap the buttons below to open it";
+        if (result.trip_kit_note) {
+          latestSummary.textContent += ` • ${result.trip_kit_note}`;
+        }
         setLinks(result);
       }
 
@@ -914,7 +917,10 @@
             ].filter(Boolean);
             setLog(lines.join("\n"));
           } else {
-            setLog("Brief generated. Open the card, full brief, or synopsis below.");
+            setLog([
+              "Brief generated. Open the card, full brief, or synopsis below.",
+              payload.result?.trip_kit_note || "",
+            ].filter(Boolean).join("\n"));
           }
         } catch (error) {
           const message = error.name === "AbortError"

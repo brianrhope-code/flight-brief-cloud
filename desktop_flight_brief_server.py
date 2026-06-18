@@ -45,6 +45,7 @@ PHONE_APP_URL = "https://flight-briefs-brian-hope-c6t.pages.dev/"
 CLOUD_MODE = os.environ.get("FLIGHT_BRIEF_CLOUD_MODE", "").lower() in {"1", "true", "yes"}
 GENERATE_JOBS: dict[str, dict] = {}
 GENERATE_JOBS_LOCK = threading.Lock()
+CLOUD_TRIP_KIT_MAX_BYTES = int(os.environ.get("FLIGHT_BRIEF_CLOUD_TRIP_KIT_MAX_BYTES", str(40 * 1024 * 1024)))
 NPX_CANDIDATES = [
     Path("/Users/brianhope/.nvm/versions/node/v24.14.0/bin/npx"),
     Path("/opt/homebrew/bin/npx"),
@@ -531,8 +532,18 @@ class Handler(BaseHTTPRequestHandler):
                     break
         if "pairing" in supplemental_uploads:
             data_fields["pairing_pdf"] = supplemental_uploads["pairing"]["path"]
+        trip_kit_skipped = ""
         if "trip_kit" in supplemental_uploads:
-            data_fields["trip_kit_pdf"] = supplemental_uploads["trip_kit"]["path"]
+            trip_kit_path = Path(supplemental_uploads["trip_kit"]["path"])
+            if CLOUD_MODE and trip_kit_path.exists() and trip_kit_path.stat().st_size > CLOUD_TRIP_KIT_MAX_BYTES:
+                size_mb = trip_kit_path.stat().st_size / (1024 * 1024)
+                limit_mb = CLOUD_TRIP_KIT_MAX_BYTES / (1024 * 1024)
+                trip_kit_skipped = (
+                    f"Trip kit uploaded ({size_mb:.0f} MB) but skipped during cloud generation "
+                    f"to stay under the Render memory limit ({limit_mb:.0f} MB)."
+                )
+            else:
+                data_fields["trip_kit_pdf"] = supplemental_uploads["trip_kit"]["path"]
 
         command = build_command(upload_path, data_fields)
         result = subprocess.run(command, capture_output=True, text=True, check=False)
@@ -562,6 +573,8 @@ class Handler(BaseHTTPRequestHandler):
             "report_time": catalog_entry.get("report_time") or generated_times["report_time"],
             **output_paths,
         }
+        if trip_kit_skipped:
+            latest["trip_kit_note"] = trip_kit_skipped
         self.update_latest_catalog_times(latest["pickup_time"], latest["report_time"])
         self.write_latest_result(latest)
 
