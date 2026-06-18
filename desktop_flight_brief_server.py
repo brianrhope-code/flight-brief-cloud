@@ -13,6 +13,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
+import uuid
 import zipfile
 from datetime import datetime
 from email import policy
@@ -40,6 +42,8 @@ SENIORITY_SOURCE_PDF = REFERENCE_DIR / "Contract and Bidding" / "Category Summar
 PHONE_PROJECT_NAME = "flight-briefs-brian-hope"
 PHONE_APP_URL = "https://flight-briefs-brian-hope-c6t.pages.dev/"
 CLOUD_MODE = os.environ.get("FLIGHT_BRIEF_CLOUD_MODE", "").lower() in {"1", "true", "yes"}
+GENERATE_JOBS: dict[str, dict] = {}
+GENERATE_JOBS_LOCK = threading.Lock()
 NPX_CANDIDATES = [
     Path("/Users/brianhope/.nvm/versions/node/v24.14.0/bin/npx"),
     Path("/opt/homebrew/bin/npx"),
@@ -243,6 +247,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path == "/api/generate/status":
+            self.handle_generate_status(parsed.query)
+            return
         if parsed.path == "/api/download":
             self.handle_latest_download(parsed.query)
             return
@@ -337,6 +344,63 @@ class Handler(BaseHTTPRequestHandler):
             raise ValueError("Upload must use multipart/form-data.")
 
         form = parse_multipart_form(self.headers, self.rfile)
+        if CLOUD_MODE and self.headers.get("X-Flight-Brief-Wait") != "1":
+            return self.start_generate_job(form)
+
+        return self.handle_generate_form(form)
+
+    def start_generate_job(self, form: MultipartForm) -> dict:
+        job_id = uuid.uuid4().hex
+        with GENERATE_JOBS_LOCK:
+            GENERATE_JOBS[job_id] = {
+                "ok": True,
+                "job_id": job_id,
+                "status": "working",
+                "message": "Brief generation started.",
+                "created_at": datetime.now().isoformat(timespec="seconds"),
+            }
+
+        def run_job() -> None:
+            try:
+                payload = self.handle_generate_form(form)
+                with GENERATE_JOBS_LOCK:
+                    GENERATE_JOBS[job_id] = {
+                        "ok": True,
+                        "job_id": job_id,
+                        "status": "done",
+                        "message": "Brief generated successfully.",
+                        "payload": payload,
+                        "result": payload.get("result"),
+                        "finished_at": datetime.now().isoformat(timespec="seconds"),
+                    }
+            except Exception as exc:  # noqa: BLE001
+                with GENERATE_JOBS_LOCK:
+                    GENERATE_JOBS[job_id] = {
+                        "ok": True,
+                        "job_id": job_id,
+                        "status": "error",
+                        "error": str(exc),
+                        "finished_at": datetime.now().isoformat(timespec="seconds"),
+                    }
+
+        threading.Thread(target=run_job, daemon=True).start()
+        return {
+            "ok": True,
+            "job_id": job_id,
+            "status": "working",
+            "message": "Brief generation started.",
+        }
+
+    def handle_generate_status(self, query: str) -> None:
+        job_id = (parse_qs(query).get("job_id") or [""])[0]
+        with GENERATE_JOBS_LOCK:
+            job = dict(GENERATE_JOBS.get(job_id) or {})
+        if not job:
+            self.respond_json({"ok": False, "error": "Generation job not found."}, status=HTTPStatus.NOT_FOUND)
+            return
+        self.respond_json(job)
+
+    def handle_generate_form(self, form: MultipartForm) -> dict:
 
         UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)

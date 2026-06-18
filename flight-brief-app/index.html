@@ -373,6 +373,30 @@
         return payload;
       }
 
+      function sleep(ms) {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+      }
+
+      async function waitForGenerateJob(jobId) {
+        const started = Date.now();
+        let attempt = 0;
+        while (Date.now() - started < 8 * 60 * 1000) {
+          attempt += 1;
+          await sleep(attempt < 4 ? 2500 : 5000);
+          const payload = await postJson(`/api/generate/status?job_id=${encodeURIComponent(jobId)}`, {
+            cache: "no-store",
+          });
+          if (payload.status === "done") {
+            return payload.payload || { ok: true, result: payload.result };
+          }
+          if (payload.status === "error") {
+            throw new Error(payload.error || "Brief generation failed.");
+          }
+          setLog(`Generating brief in the cloud...\nStill working. This can take a few minutes on the first run.`);
+        }
+        throw new Error("Generation is still running. Refresh this page and tap Latest in a minute.");
+      }
+
       function renderResources(resources) {
         if (!resourceList || !resourcesCount) {
           return;
@@ -786,11 +810,15 @@
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 180000);
         try {
-          const payload = await postJson("/api/generate", {
+          let payload = await postJson("/api/generate", {
             method: "POST",
             body: data,
             signal: controller.signal,
           });
+          if (payload.job_id) {
+            setLog("Generating brief in the cloud...\nUpload received. Waiting for the PDFs to finish.");
+            payload = await waitForGenerateJob(payload.job_id);
+          }
           applyActiveUploads(payload.result?.active_uploads || payload.result?.uploads || activeUploads);
           applyGeneratedTimes(payload.result);
           summarize(payload.result);
@@ -810,7 +838,7 @@
           }
         } catch (error) {
           const message = error.name === "AbortError"
-            ? "Generation timed out before the app heard back. Refresh, then press Latest or Generate again. Your active files are still saved."
+            ? "The upload connection timed out before the cloud accepted it. Try again with the same files."
             : `Generation failed.\n${error.message}`;
           setLog(message);
         } finally {
