@@ -396,15 +396,31 @@
         for (let index = 0; index < total; index += 1) {
           const start = index * chunkSize;
           const chunk = file.slice(start, Math.min(file.size, start + chunkSize));
-          setLog(`Uploading ${label}...\nChunk ${index + 1} of ${total}`);
           const url = `/api/upload-chunk?slot=${encodeURIComponent(slot)}&filename=${encodeURIComponent(file.name)}&upload_id=${encodeURIComponent(uploadId)}&index=${index}&total=${total}`;
-          const response = await fetch(url, {
-            method: "POST",
-            headers: { "Content-Type": "application/octet-stream" },
-            body: chunk,
-          });
-          const payload = await response.json();
-          if (!payload.ok) throw new Error(payload.error || `${label} upload failed.`);
+          let payload = null;
+          let lastError = null;
+          for (let attempt = 1; attempt <= 5; attempt += 1) {
+            try {
+              setLog(
+                `Uploading ${label}...\nChunk ${index + 1} of ${total}` +
+                (attempt > 1 ? `\nRetry ${attempt - 1} of 4 for this chunk.` : "")
+              );
+              const response = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/octet-stream" },
+                body: chunk,
+              });
+              payload = await response.json();
+              if (!payload.ok) throw new Error(payload.error || `${label} upload failed.`);
+              break;
+            } catch (error) {
+              lastError = error;
+              if (attempt < 5) await sleep(1500 * attempt);
+            }
+          }
+          if (!payload?.ok) {
+            throw new Error(`${label} upload failed on chunk ${index + 1} of ${total}. ${lastError?.message || "Network connection dropped."}`);
+          }
           latestPayload = payload;
           if (payload.active_uploads) applyActiveUploads(payload.active_uploads);
         }
