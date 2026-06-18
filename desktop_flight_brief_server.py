@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 import argparse
-import cgi
 import hashlib
 import html
+import io
 import json
 import os
 import mimetypes
@@ -15,6 +15,8 @@ import sys
 import tempfile
 import zipfile
 from datetime import datetime
+from email import policy
+from email.parser import BytesParser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -90,6 +92,61 @@ def save_upload(file_item, label: str) -> dict[str, str]:
         "path": str(upload_path),
         "url": upload_path.as_uri(),
     }
+
+
+class UploadedField:
+    def __init__(self, filename: str, content: bytes, value: str = "") -> None:
+        self.filename = filename
+        self.file = io.BytesIO(content)
+        self.value = value
+
+
+class MultipartForm(dict):
+    def getvalue(self, key: str, default: str = "") -> str:
+        item = self.get(key)
+        if item is None:
+            return default
+        if isinstance(item, list):
+            item = item[0] if item else None
+        if item is None:
+            return default
+        return getattr(item, "value", default)
+
+
+def parse_multipart_form(headers, stream) -> MultipartForm:
+    content_type = headers.get("Content-Type", "")
+    length = int(headers.get("Content-Length", "0") or "0")
+    body = stream.read(length)
+    raw = (
+        f"Content-Type: {content_type}\r\n"
+        "MIME-Version: 1.0\r\n"
+        "\r\n"
+    ).encode("utf-8") + body
+    message = BytesParser(policy=policy.default).parsebytes(raw)
+    form = MultipartForm()
+    if not message.is_multipart():
+        return form
+
+    for part in message.iter_parts():
+        disposition = part.get("Content-Disposition", "")
+        if "form-data" not in disposition:
+            continue
+        name = part.get_param("name", header="content-disposition")
+        if not name:
+            continue
+        filename = part.get_param("filename", header="content-disposition") or ""
+        payload = part.get_payload(decode=True) or b""
+        value = "" if filename else payload.decode(part.get_content_charset() or "utf-8", errors="replace")
+        field = UploadedField(filename, payload, value)
+        if name in form:
+            existing = form[name]
+            if isinstance(existing, list):
+                existing.append(field)
+            else:
+                form[name] = [existing, field]
+        else:
+            form[name] = field
+    return form
 
 
 def build_command(pdf_path: Path, form: dict[str, str]) -> list[str]:
@@ -261,14 +318,7 @@ class Handler(BaseHTTPRequestHandler):
         if "multipart/form-data" not in content_type:
             raise ValueError("Upload must use multipart/form-data.")
 
-        form = cgi.FieldStorage(
-            fp=self.rfile,
-            headers=self.headers,
-            environ={
-                "REQUEST_METHOD": "POST",
-                "CONTENT_TYPE": content_type,
-            },
-        )
+        form = parse_multipart_form(self.headers, self.rfile)
 
         UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -936,14 +986,7 @@ class Handler(BaseHTTPRequestHandler):
         if "multipart/form-data" not in content_type:
             raise ValueError("Upload must use multipart/form-data.")
 
-        form = cgi.FieldStorage(
-            fp=self.rfile,
-            headers=self.headers,
-            environ={
-                "REQUEST_METHOD": "POST",
-                "CONTENT_TYPE": content_type,
-            },
-        )
+        form = parse_multipart_form(self.headers, self.rfile)
         if "resources" not in form:
             raise ValueError("Choose one or more resource files before uploading.")
 
