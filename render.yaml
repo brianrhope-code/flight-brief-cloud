@@ -3,9 +3,12 @@ services:
     name: flight-brief-cloud
     runtime: python
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: python desktop_flight_brief_server.py
+    buildCommand: python -m pip install -r requirements.txt
+    startCommand: python -u desktop_flight_brief_server.py
+    healthCheckPath: /api/health
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.11
       - key: FLIGHT_BRIEF_CLOUD_MODE
         value: "true"
       - key: FLIGHT_BRIEF_OUTPUT_DIR
