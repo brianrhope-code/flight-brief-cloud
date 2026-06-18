@@ -61,6 +61,8 @@ PORT = int(os.environ.get("PORT", "8765"))
 WEB_APP_DIR = Path(__file__).resolve().parent / "flight-brief-app"
 CURRENT_BRIEF_DIR = WEB_APP_DIR / "briefs" / "current"
 CURRENT_LATEST_PATH = CURRENT_BRIEF_DIR / "latest_result.json"
+CURRENT_UPLOADS_DIR = CURRENT_BRIEF_DIR / "uploads"
+CURRENT_ACTIVE_UPLOADS_PATH = CURRENT_BRIEF_DIR / "active_uploads.json"
 FULL_BRIEF_OVERRIDES = [
     Path("/Users/brianhope/Downloads/UA1818_Gold_Standard_Brief_v3_4_FULL.pdf"),
     Path("/Users/brianhope/Downloads/UA1818_Gold_Standard_Brief_v3_5_FIXED.pdf"),
@@ -410,7 +412,7 @@ class Handler(BaseHTTPRequestHandler):
         if slot == "flight_plan":
             self.clear_current_brief()
         active_uploads[slot] = upload_record(target)
-        self.write_active_uploads(active_uploads)
+        active_uploads = self.write_active_uploads(active_uploads)
         return {
             "ok": True,
             "status": "complete",
@@ -562,7 +564,7 @@ class Handler(BaseHTTPRequestHandler):
             "flight_plan": flight_plan_upload,
             **supplemental_uploads,
         }
-        self.write_active_uploads(active_uploads)
+        active_uploads = self.write_active_uploads(active_uploads)
         catalog_entry = self.latest_catalog_entry()
         generated_times = parse_generated_times(output_paths.get("txt_path"))
 
@@ -1126,22 +1128,53 @@ class Handler(BaseHTTPRequestHandler):
                 if isinstance(value, dict) and value.get("path") and Path(value["path"]).exists()
             }
 
-        try:
-            if ACTIVE_UPLOADS_PATH.exists():
-                payload = json.loads(ACTIVE_UPLOADS_PATH.read_text())
+        for active_path in (ACTIVE_UPLOADS_PATH, CURRENT_ACTIVE_UPLOADS_PATH):
+            try:
+                if not active_path.exists():
+                    continue
+                payload = json.loads(active_path.read_text())
                 if isinstance(payload, dict):
-                    return existing_uploads(payload)
-        except (OSError, json.JSONDecodeError):
-            pass
+                    existing = existing_uploads(payload)
+                    if existing:
+                        return existing
+            except (OSError, json.JSONDecodeError):
+                continue
         latest = self.read_latest_result() or {}
         uploads = latest.get("active_uploads") or latest.get("uploads") or {}
         return existing_uploads(uploads) if isinstance(uploads, dict) else {}
 
-    def write_active_uploads(self, uploads: dict) -> None:
+    def persist_active_uploads(self, uploads: dict) -> dict:
+        persistent: dict[str, dict[str, str]] = {}
+        try:
+            CURRENT_UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+            for key, value in uploads.items():
+                if not isinstance(value, dict) or not value.get("path"):
+                    continue
+                source = Path(str(value["path"]))
+                if not source.exists() or not source.is_file():
+                    continue
+                target = CURRENT_UPLOADS_DIR / sanitize_filename(value.get("name") or source.name)
+                if source.resolve() != target.resolve():
+                    shutil.copy2(source, target)
+                persistent[key] = upload_record(target)
+            if persistent:
+                CURRENT_ACTIVE_UPLOADS_PATH.write_text(json.dumps(persistent, indent=2))
+        except OSError:
+            return uploads
+        return persistent or uploads
+
+    def write_active_uploads(self, uploads: dict) -> dict:
+        uploads = self.persist_active_uploads(uploads)
         try:
             ACTIVE_UPLOADS_PATH.write_text(json.dumps(uploads, indent=2))
         except OSError:
             pass
+        latest = self.read_latest_result() or {}
+        if latest:
+            latest["active_uploads"] = uploads
+            latest["uploads"] = uploads
+            self.write_latest_result(latest)
+        return uploads
 
     def update_latest_catalog_times(self, pickup_time: str, report_time: str) -> None:
         if not pickup_time and not report_time:
