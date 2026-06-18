@@ -45,7 +45,7 @@ PHONE_APP_URL = "https://flight-briefs-brian-hope-c6t.pages.dev/"
 CLOUD_MODE = os.environ.get("FLIGHT_BRIEF_CLOUD_MODE", "").lower() in {"1", "true", "yes"}
 GENERATE_JOBS: dict[str, dict] = {}
 GENERATE_JOBS_LOCK = threading.Lock()
-CLOUD_TRIP_KIT_MAX_BYTES = int(os.environ.get("FLIGHT_BRIEF_CLOUD_TRIP_KIT_MAX_BYTES", str(40 * 1024 * 1024)))
+CLOUD_TRIP_KIT_MAX_BYTES = int(os.environ.get("FLIGHT_BRIEF_CLOUD_TRIP_KIT_MAX_BYTES", str(160 * 1024 * 1024)))
 NPX_CANDIDATES = [
     Path("/Users/brianhope/.nvm/versions/node/v24.14.0/bin/npx"),
     Path("/opt/homebrew/bin/npx"),

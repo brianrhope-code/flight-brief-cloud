@@ -307,6 +307,45 @@ def extract_text(pdf_path: Path) -> str:
     return "\n".join(chunks)
 
 
+def extract_trip_kit_relevant_text(pdf_path: Path, airports: list[str], max_pages: int = 28) -> str:
+    reader = PdfReader(str(pdf_path))
+    airport_tokens = {
+        token.upper()
+        for airport in airports
+        for token in (airport, airport[-3:] if len(airport) >= 3 else airport)
+        if token
+    }
+    keep_markers = (
+        "AERODROME INFORMATION",
+        "OFFICIAL PILOT BRIEFING",
+        "10-7",
+        "NOTAM",
+        "TAXI",
+        "RUNWAY",
+        "RWY",
+        "TWY",
+        "AIRPORT",
+    )
+    chunks: list[str] = []
+    kept = 0
+    for index, page in enumerate(reader.pages, start=1):
+        try:
+            page_text = (page.extract_text() or "").replace("\x00", "").strip()
+        except Exception:
+            continue
+        upper = page_text.upper()
+        has_airport = any(token in upper for token in airport_tokens)
+        has_marker = any(marker in upper for marker in keep_markers)
+        if not (has_airport or (has_marker and kept < 6)):
+            continue
+        chunks.append(f"{SECTION_BREAK}{index} =====")
+        chunks.append(page_text)
+        kept += 1
+        if kept >= max_pages:
+            break
+    return "\n".join(chunks)
+
+
 def match_group(pattern: str, text: str, group: int = 1, flags: int = 0) -> str:
     match = re.search(pattern, text, flags)
     return normalize_space(match.group(group)) if match else ""
@@ -1552,8 +1591,13 @@ def apply_trip_kit_notes(data: BriefData, trip_kit_pdf: Path) -> None:
     if not trip_kit_pdf or not trip_kit_pdf.exists():
         return
     try:
-        trip_text = extract_text(trip_kit_pdf)
+        trip_text = extract_trip_kit_relevant_text(
+            trip_kit_pdf,
+            [data.departure_icao or data.departure, data.destination_icao or data.destination],
+        )
     except Exception:
+        return
+    if not trip_text:
         return
     dep_notes = operational_notam_snippets(trip_text, data.departure_icao or data.departure)
     dep_notes.extend(airport_10_7_notes(trip_text, data.departure_icao or data.departure))
