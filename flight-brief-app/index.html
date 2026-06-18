@@ -806,9 +806,14 @@
         generateBtn.disabled = true;
         publishBtn.disabled = true;
         generateBtn.textContent = "Generating...";
-        setLog("Generating brief...");
+        setLog(
+          isCloudBuilder()
+            ? "Uploading files to the cloud...\nLarge trip kits can take several minutes from an iPhone."
+            : "Generating brief..."
+        );
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 180000);
+        const uploadTimeoutMs = isCloudBuilder() ? 12 * 60 * 1000 : 180000;
+        const timeoutId = setTimeout(() => controller.abort(), uploadTimeoutMs);
         try {
           let payload = await postJson("/api/generate", {
             method: "POST",
@@ -838,7 +843,7 @@
           }
         } catch (error) {
           const message = error.name === "AbortError"
-            ? "The upload connection timed out before the cloud accepted it. Try again with the same files."
+            ? "The upload took longer than expected before the cloud accepted it. Try again on Wi-Fi, or try the flight plan and pairing first, then add the trip kit."
             : `Generation failed.\n${error.message}`;
           setLog(message);
         } finally {
