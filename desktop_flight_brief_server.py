@@ -608,14 +608,47 @@ class Handler(BaseHTTPRequestHandler):
         return None
 
     def latest_catalog_entry(self) -> dict:
+        latest = self.read_latest_result() or {}
         catalog_path = WEB_APP_DIR / "briefs.json"
         try:
             catalog = json.loads(catalog_path.read_text())
         except Exception:
             return {}
-        if isinstance(catalog, list) and catalog and isinstance(catalog[0], dict):
-            return catalog[0]
-        return {}
+        if not isinstance(catalog, list):
+            return {}
+        entries = [item for item in catalog if isinstance(item, dict)]
+        if not entries:
+            return {}
+
+        latest_full_name = Path(str(latest.get("full_pdf_path") or "")).name
+        latest_source_path = str(latest.get("source_pdf_path") or "")
+        latest_source_name = str(latest.get("source_pdf_name") or "")
+
+        def matches_latest(entry: dict) -> bool:
+            full_pdf_name = Path(str(entry.get("full_pdf") or "")).name
+            source_pdf = str(entry.get("source_pdf") or "")
+            return bool(
+                (latest_full_name and full_pdf_name == latest_full_name)
+                or (latest_source_path and source_pdf == latest_source_path)
+                or (latest_source_name and latest_source_name in source_pdf)
+            )
+
+        selected = next((entry for entry in entries if matches_latest(entry)), entries[0])
+        selected = dict(selected)
+        if latest.get("pickup_time"):
+            selected["pickup_time"] = latest["pickup_time"]
+        if latest.get("report_time"):
+            selected["report_time"] = latest["report_time"]
+        if latest.get("trip_kit_note"):
+            selected["trip_kit_note"] = latest["trip_kit_note"]
+        uploads = latest.get("active_uploads") or latest.get("uploads") or {}
+        if isinstance(uploads, dict):
+            selected["source_documents"] = {
+                key: value.get("name")
+                for key, value in uploads.items()
+                if isinstance(value, dict) and value.get("name")
+            }
+        return selected
 
     def synopsis_output_path(self, source: Path) -> Path:
         return OUTPUT_DIR / f"{source.stem}_brief_synopsis.pdf"
@@ -737,6 +770,22 @@ class Handler(BaseHTTPRequestHandler):
         def get_list(key: str) -> list[str]:
             value = record.get(key)
             return value if isinstance(value, list) else []
+
+        def source_documents_text() -> str:
+            docs = record.get("source_documents") or {}
+            if not isinstance(docs, dict):
+                return ""
+            labels = {
+                "flight_plan": "Flight plan",
+                "trip_kit": "Trip kit",
+                "pairing": "Pairing",
+            }
+            parts = [
+                f"{labels.get(key, key)}: {value}"
+                for key, value in docs.items()
+                if value
+            ]
+            return " | ".join(parts)
 
         def first_matching_timeline(pattern: str) -> dict:
             regex = re.compile(pattern, re.I)
@@ -880,7 +929,10 @@ class Handler(BaseHTTPRequestHandler):
         draw.rounded_rectangle((x, y, x2, y + 124), radius=12, fill=light_blue, outline=(190, 211, 235))
         draw.text((x + 12, y + 15), "Dispatch / Release", fill=blue, font=font_h2)
         summary = f"Sector {record.get('dispatch_sector') or '--'}; ETOPS alternates {', '.join(get_list('etops_airports')[:2]) or 'verify'}; release {record.get('release') or '--'}."
-        draw_wrapped(summary, x + 12, y + 48, x2 - x - 24, font_small, ink, max_lines=3)
+        draw_wrapped(summary, x + 12, y + 48, x2 - x - 24, font_small, ink, max_lines=2)
+        source_text = source_documents_text()
+        if source_text:
+            draw_wrapped(source_text, x + 12, y + 88, x2 - x - 24, font_tiny, muted, max_lines=2)
 
         x, y, x2, y2 = panel(cards[1], "2  PA / Cabin", blue)
         pa = [
@@ -994,7 +1046,7 @@ class Handler(BaseHTTPRequestHandler):
         )
         draw_wrapped(takeaway, x + 12, ay + 58, x2 - x - 24, font_small, ink, max_lines=4)
 
-        footer = "Gold Standard Pilot Brief synopsis. Visual reference only. Verify against official OFP, FMS, ATIS, NOTAMs, charts, and company manuals."
+        footer = "Gold Standard Pilot Brief synopsis from latest uploaded docs. Visual reference only. Verify against official OFP, FMS, ATIS, NOTAMs, charts, and company manuals."
         draw.text((margin, H - 28), footer, fill=muted, font=font_small)
         stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
         draw.text((W - margin - text_size(stamp, font_small)[0], H - 28), stamp, fill=muted, font=font_small)
