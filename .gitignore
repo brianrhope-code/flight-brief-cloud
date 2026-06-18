@@ -6,4 +6,5 @@ tmp/
 output/
 uploads/
 resources/
+flight-brief-app/briefs/current/
 *.log

@@ -59,6 +59,8 @@ PDFTOPPM_CANDIDATES = [
 HOST = "0.0.0.0" if CLOUD_MODE else "127.0.0.1"
 PORT = int(os.environ.get("PORT", "8765"))
 WEB_APP_DIR = Path(__file__).resolve().parent / "flight-brief-app"
+CURRENT_BRIEF_DIR = WEB_APP_DIR / "briefs" / "current"
+CURRENT_LATEST_PATH = CURRENT_BRIEF_DIR / "latest_result.json"
 FULL_BRIEF_OVERRIDES = [
     Path("/Users/brianhope/Downloads/UA1818_Gold_Standard_Brief_v3_4_FULL.pdf"),
     Path("/Users/brianhope/Downloads/UA1818_Gold_Standard_Brief_v3_5_FIXED.pdf"),
@@ -405,6 +407,8 @@ class Handler(BaseHTTPRequestHandler):
         shutil.rmtree(CHUNK_DIR / upload_id, ignore_errors=True)
 
         active_uploads = self.read_active_uploads()
+        if slot == "flight_plan":
+            self.clear_current_brief()
         active_uploads[slot] = upload_record(target)
         self.write_active_uploads(active_uploads)
         return {
@@ -1072,12 +1076,47 @@ class Handler(BaseHTTPRequestHandler):
         }
 
     def write_latest_result(self, latest: dict) -> None:
+        latest = self.persist_current_brief(latest)
         latest_payload = json.dumps(latest, indent=2)
         for latest_path in (OUTPUT_DIR / "latest_desktop_result.json", LATEST_RESULT_FALLBACK_PATH):
             try:
                 latest_path.write_text(latest_payload)
             except OSError:
                 continue
+
+    def persist_current_brief(self, latest: dict) -> dict:
+        persistent = dict(latest)
+        try:
+            CURRENT_BRIEF_DIR.mkdir(parents=True, exist_ok=True)
+            for key in ("txt_path", "card_pdf_path", "full_pdf_path", "synopsis_pdf_path"):
+                source_value = persistent.get(key)
+                if not source_value:
+                    continue
+                source = Path(str(source_value))
+                if not source.exists() or not source.is_file():
+                    continue
+                target = CURRENT_BRIEF_DIR / source.name
+                if source.resolve() != target.resolve():
+                    shutil.copy2(source, target)
+                persistent[key] = str(target)
+            CURRENT_LATEST_PATH.write_text(json.dumps(persistent, indent=2))
+        except OSError:
+            return latest
+        return persistent
+
+    def clear_current_brief(self) -> None:
+        try:
+            if CURRENT_BRIEF_DIR.exists():
+                for child in CURRENT_BRIEF_DIR.iterdir():
+                    if child.is_file():
+                        child.unlink()
+                    elif child.is_dir():
+                        shutil.rmtree(child)
+            for latest_path in (OUTPUT_DIR / "latest_desktop_result.json", LATEST_RESULT_FALLBACK_PATH):
+                if latest_path.exists():
+                    latest_path.unlink()
+        except OSError:
+            pass
 
     def read_active_uploads(self) -> dict:
         def existing_uploads(uploads: dict) -> dict:
@@ -1265,7 +1304,7 @@ class Handler(BaseHTTPRequestHandler):
         }
 
     def read_latest_result(self) -> dict | None:
-        candidates = [OUTPUT_DIR / "latest_desktop_result.json", LATEST_RESULT_FALLBACK_PATH]
+        candidates = [OUTPUT_DIR / "latest_desktop_result.json", LATEST_RESULT_FALLBACK_PATH, CURRENT_LATEST_PATH]
         candidates = sorted(candidates, key=lambda path: path.stat().st_mtime if path.exists() else 0, reverse=True)
         for latest_path in candidates:
             try:
