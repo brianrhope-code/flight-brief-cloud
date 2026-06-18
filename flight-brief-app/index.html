@@ -313,6 +313,10 @@
         return `./synopsis?pdf=${encodeURIComponent(pdfUrl)}&title=${encodeURIComponent(title)}`;
       }
 
+      function documentViewerUrl(pdfUrl, title) {
+        return `./synopsis?pdf=${encodeURIComponent(pdfUrl)}&title=${encodeURIComponent(title || "Flight Brief")}`;
+      }
+
       function escapeHtml(value) {
         return String(value || "")
           .replaceAll("&", "&amp;")
@@ -572,11 +576,11 @@
         const fullHref = result?.full_pdf_url || result?.full_pdf || null;
         const links = [
           [txtLink, txtHref || (result ? "/api/download?kind=txt" : null), "Open text"],
-          [cardLink, cardHref || (result ? "/api/download?kind=card" : null), "Open card PDF"],
-          [fullLink, fullHref || (result ? "/api/download?kind=full" : null), "Open output PDF"],
+          [cardLink, documentViewerUrl(cardHref || "/api/download?kind=card", "Card PDF"), "Open card PDF"],
+          [fullLink, documentViewerUrl(fullHref || "/api/download?kind=full", "Full Brief PDF"), "Open output PDF"],
         ];
         links.forEach(([el, href, label]) => {
-          if (href) {
+          if (href && result) {
             el.href = href;
             el.textContent = label;
             el.classList.remove("disabled");
@@ -957,7 +961,7 @@
 
       async function buildSynopsis() {
         if (isHostedPhoneApp()) {
-          if (currentResult?.synopsis) window.open(synopsisViewerUrl(currentResult.synopsis), "_blank", "noopener");
+          if (currentResult?.synopsis) window.location.href = synopsisViewerUrl(currentResult.synopsis);
           return;
         }
         synopsisBtn.disabled = true;
@@ -969,7 +973,7 @@
           if (!payload.ok) throw new Error(payload.error || "Synopsis failed");
           if (currentResult && payload.synopsis_static_url) currentResult.synopsis = payload.synopsis_static_url;
           setLog([payload.message || "Brief synopsis created.", payload.synopsis_url || ""].filter(Boolean).join("\n"));
-          if (payload.synopsis_url) window.open(synopsisViewerUrl(payload.synopsis_url), "_blank", "noopener");
+          if (payload.synopsis_url) window.location.href = synopsisViewerUrl(payload.synopsis_url);
         } catch (error) {
           setLog(`Synopsis failed.\n${error.message}`);
         } finally {

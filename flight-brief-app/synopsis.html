@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Flight Brief" />
     <meta name="theme-color" content="#071f3f" />
-    <title>Brief Synopsis</title>
+    <title>Flight Brief Viewer</title>
     <style>
       :root {
         color-scheme: light;
@@ -288,9 +288,9 @@
         <div class="runway" aria-hidden="true"></div>
         <div class="bar">
           <section class="identity" aria-label="Synopsis title">
-            <div class="eyebrow">Gold Standard Synopsis</div>
-            <h1 id="title">Brief Synopsis</h1>
-            <div class="sub">One-page flight picture. <span class="rotate">Rotate for the wide view.</span></div>
+            <div class="eyebrow">Gold Standard Viewer</div>
+            <h1 id="title">Flight Brief Viewer</h1>
+            <div class="sub">Back button stays here. <span class="rotate">Rotate for the wide view.</span></div>
           </section>
           <nav class="actions" aria-label="Synopsis actions">
             <button class="primary" type="button" id="back-btn">Back to app</button>
@@ -301,7 +301,7 @@
 
       <section class="viewer-shell" aria-label="Synopsis viewer">
         <div class="hint-strip">
-          <span><strong>Review flow:</strong> threats, timeline, ETOPS, arrival, then captain focus.</span>
+          <span><strong>Review flow:</strong> use Back to app when finished, or Open PDF for the raw document.</span>
           <span class="chip">Visual reference only</span>
         </div>
         <div class="frame-wrap">
@@ -325,11 +325,11 @@
       const pdfLink = document.getElementById("pdf-link");
       const fallback = document.getElementById("fallback");
 
-      document.title = `${titleText} Synopsis`;
+      document.title = titleText;
       document.getElementById("title").textContent = titleText;
 
       document.getElementById("back-btn").addEventListener("click", () => {
-        window.location.href = "./index.html";
+        window.location.href = "./";
       });
 
       if (pdfUrl) {
