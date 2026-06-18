@@ -32,6 +32,7 @@ GENERATOR = ROOT / "generate_flight_release_brief.py"
 DEFAULT_OUTPUT_DIR = Path("/Users/brianhope/Desktop/Flight Plan/New Flights")
 OUTPUT_DIR = Path(os.environ.get("FLIGHT_BRIEF_OUTPUT_DIR", str(DEFAULT_OUTPUT_DIR))).expanduser()
 UPLOAD_DIR = OUTPUT_DIR / "uploads"
+CHUNK_DIR = OUTPUT_DIR / "upload_chunks"
 RESOURCE_DIR = OUTPUT_DIR / "resources"
 LATEST_RESULT_FALLBACK_PATH = Path("/tmp/flight-brief-latest-result.json")
 ACTIVE_UPLOADS_PATH = OUTPUT_DIR / "active_uploads.json"
@@ -95,6 +96,14 @@ def save_upload(file_item, label: str) -> dict[str, str]:
         "name": upload_path.name,
         "path": str(upload_path),
         "url": upload_path.as_uri(),
+    }
+
+
+def upload_record(path: Path) -> dict[str, str]:
+    return {
+        "name": path.name,
+        "path": str(path),
+        "url": path.as_uri(),
     }
 
 
@@ -308,6 +317,15 @@ class Handler(BaseHTTPRequestHandler):
                         status=HTTPStatus.INTERNAL_SERVER_ERROR,
                     )
                 return
+            if parsed.path == "/api/upload-chunk":
+                try:
+                    self.respond_json(self.handle_upload_chunk(parsed.query))
+                except Exception as exc:  # noqa: BLE001
+                    self.respond_json(
+                        {"ok": False, "error": str(exc)},
+                        status=HTTPStatus.INTERNAL_SERVER_ERROR,
+                    )
+                return
             if parsed.path == "/api/publish":
                 try:
                     self.respond_json(self.handle_publish_to_phone())
@@ -337,6 +355,64 @@ class Handler(BaseHTTPRequestHandler):
                 {"ok": False, "error": str(exc)},
                 status=HTTPStatus.INTERNAL_SERVER_ERROR,
             )
+
+    def handle_upload_chunk(self, query: str) -> dict:
+        if not CLOUD_MODE:
+            raise ValueError("Chunked upload is only available in cloud mode.")
+        params = parse_qs(query)
+        slot = (params.get("slot") or [""])[0]
+        filename = sanitize_filename((params.get("filename") or ["upload.pdf"])[0])
+        upload_id = re.sub(r"[^a-zA-Z0-9_-]", "", (params.get("upload_id") or [""])[0])
+        index = int((params.get("index") or ["0"])[0])
+        total = int((params.get("total") or ["0"])[0])
+        labels = {
+            "flight_plan": "flight-plan",
+            "trip_kit": "trip-kit",
+            "pairing": "pairing",
+        }
+        if slot not in labels:
+            raise ValueError("Unknown upload slot.")
+        if not upload_id or total <= 0 or index < 0 or index >= total:
+            raise ValueError("Invalid upload chunk.")
+
+        length = int(self.headers.get("Content-Length", "0") or "0")
+        chunk = self.rfile.read(length)
+        chunk_dir = CHUNK_DIR / upload_id / slot
+        chunk_dir.mkdir(parents=True, exist_ok=True)
+        (chunk_dir / f"{index:06d}.part").write_bytes(chunk)
+
+        received = len(list(chunk_dir.glob("*.part")))
+        if received < total:
+            return {
+                "ok": True,
+                "status": "receiving",
+                "slot": slot,
+                "received": received,
+                "total": total,
+            }
+
+        UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        target_name = f"{datetime.now().strftime('%Y%m%d-%H%M%S')}-{labels[slot]}-{filename}"
+        target = UPLOAD_DIR / target_name
+        with target.open("wb") as output:
+            for chunk_index in range(total):
+                part_path = chunk_dir / f"{chunk_index:06d}.part"
+                if not part_path.exists():
+                    raise ValueError("Upload chunk missing. Try the upload again.")
+                with part_path.open("rb") as part:
+                    shutil.copyfileobj(part, output)
+        shutil.rmtree(CHUNK_DIR / upload_id, ignore_errors=True)
+
+        active_uploads = self.read_active_uploads()
+        active_uploads[slot] = upload_record(target)
+        self.write_active_uploads(active_uploads)
+        return {
+            "ok": True,
+            "status": "complete",
+            "slot": slot,
+            "upload": active_uploads[slot],
+            "active_uploads": active_uploads,
+        }
 
     def handle_generate(self) -> dict:
         content_type = self.headers.get("Content-Type", "")
@@ -930,16 +1006,23 @@ class Handler(BaseHTTPRequestHandler):
                 continue
 
     def read_active_uploads(self) -> dict:
+        def existing_uploads(uploads: dict) -> dict:
+            return {
+                key: value
+                for key, value in uploads.items()
+                if isinstance(value, dict) and value.get("path") and Path(value["path"]).exists()
+            }
+
         try:
             if ACTIVE_UPLOADS_PATH.exists():
                 payload = json.loads(ACTIVE_UPLOADS_PATH.read_text())
                 if isinstance(payload, dict):
-                    return payload
+                    return existing_uploads(payload)
         except (OSError, json.JSONDecodeError):
             pass
         latest = self.read_latest_result() or {}
         uploads = latest.get("active_uploads") or latest.get("uploads") or {}
-        return uploads if isinstance(uploads, dict) else {}
+        return existing_uploads(uploads) if isinstance(uploads, dict) else {}
 
     def write_active_uploads(self, uploads: dict) -> None:
         try:

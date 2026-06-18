@@ -366,6 +366,17 @@
         return data;
       }
 
+      function buildGenerateFieldsFormData() {
+        const data = new FormData();
+        const flyingId = document.getElementById("flying_id").value.trim();
+        const pickupTime = pickupInput.value.trim();
+        const reportTime = reportInput.value.trim();
+        if (flyingId) data.append("flying_id", flyingId);
+        if (pickupTime) data.append("pickup_time", pickupTime);
+        if (reportTime) data.append("report_time", reportTime);
+        return data;
+      }
+
       async function postJson(url, options = {}) {
         const response = await fetch(url, options);
         const payload = await response.json();
@@ -375,6 +386,43 @@
 
       function sleep(ms) {
         return new Promise((resolve) => setTimeout(resolve, ms));
+      }
+
+      async function uploadCloudFile(slot, file, label) {
+        const chunkSize = 1024 * 1024;
+        const total = Math.max(1, Math.ceil(file.size / chunkSize));
+        const uploadId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+        let latestPayload = null;
+        for (let index = 0; index < total; index += 1) {
+          const start = index * chunkSize;
+          const chunk = file.slice(start, Math.min(file.size, start + chunkSize));
+          setLog(`Uploading ${label}...\nChunk ${index + 1} of ${total}`);
+          const url = `/api/upload-chunk?slot=${encodeURIComponent(slot)}&filename=${encodeURIComponent(file.name)}&upload_id=${encodeURIComponent(uploadId)}&index=${index}&total=${total}`;
+          const response = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/octet-stream" },
+            body: chunk,
+          });
+          const payload = await response.json();
+          if (!payload.ok) throw new Error(payload.error || `${label} upload failed.`);
+          latestPayload = payload;
+          if (payload.active_uploads) applyActiveUploads(payload.active_uploads);
+        }
+        return latestPayload;
+      }
+
+      async function uploadSelectedCloudFiles() {
+        const selected = [
+          ["flight_plan", pdfInput.files[0], "flight plan"],
+          ["trip_kit", tripKitInput.files[0], "trip kit"],
+          ["pairing", pairingInput.files[0], "pairing"],
+        ].filter((item) => item[1]);
+        if (!selected.length) {
+          return;
+        }
+        for (const [slot, file, label] of selected) {
+          await uploadCloudFile(slot, file, label);
+        }
       }
 
       async function waitForGenerateJob(jobId) {
@@ -798,7 +846,13 @@
         }
         let data;
         try {
-          data = buildGenerateFormData();
+          if (isCloudBuilder()) {
+            const hasFlightPlan = Boolean(pdfInput.files[0] || activeUploads.flight_plan?.path);
+            if (!hasFlightPlan) throw new Error("Choose the flight plan PDF first.");
+            data = buildGenerateFieldsFormData();
+          } else {
+            data = buildGenerateFormData();
+          }
         } catch (error) {
           setLog(error.message);
           return;
@@ -811,10 +865,15 @@
             ? "Uploading files to the cloud...\nLarge trip kits can take several minutes from an iPhone."
             : "Generating brief..."
         );
-        const controller = new AbortController();
-        const uploadTimeoutMs = isCloudBuilder() ? 12 * 60 * 1000 : 180000;
-        const timeoutId = setTimeout(() => controller.abort(), uploadTimeoutMs);
+        let timeoutId = null;
         try {
+          if (isCloudBuilder()) {
+            await uploadSelectedCloudFiles();
+            data = buildGenerateFieldsFormData();
+          }
+          const controller = new AbortController();
+          const generateTimeoutMs = isCloudBuilder() ? 60000 : 180000;
+          timeoutId = setTimeout(() => controller.abort(), generateTimeoutMs);
           let payload = await postJson("/api/generate", {
             method: "POST",
             body: data,
@@ -847,7 +906,7 @@
             : `Generation failed.\n${error.message}`;
           setLog(message);
         } finally {
-          clearTimeout(timeoutId);
+          if (timeoutId) clearTimeout(timeoutId);
           generateBtn.disabled = false;
           publishBtn.disabled = false;
           generateBtn.textContent = isCloudBuilder() ? "Generate brief" : macGenerateLabel;
