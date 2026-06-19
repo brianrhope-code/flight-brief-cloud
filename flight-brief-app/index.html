@@ -55,7 +55,7 @@
       .section-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
       .section-head h3 { margin: 0; color: var(--blue-dark); font-size: 18px; }
       .muted { color: var(--muted); font-size: 13px; }
-      .result-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+      .result-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
       .result-link { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: #f9fbfd; color: var(--blue-dark); text-decoration: none; font-weight: 700; }
       .result-link.disabled { opacity: 0.55; pointer-events: none; }
       .log { margin: 0; padding: 14px; border-radius: 14px; background: #0e2131; color: #e6eef6; min-height: 120px; white-space: pre-wrap; word-break: break-word; line-height: 1.45; font-size: 13px; }
@@ -236,6 +236,8 @@
           <a class="result-link disabled" href="#" id="txt-link" aria-disabled="true">Open text</a>
           <a class="result-link disabled" href="#" id="card-link" aria-disabled="true">Open card PDF</a>
           <a class="result-link disabled" href="#" id="full-link" aria-disabled="true">Open full PDF</a>
+          <a class="result-link disabled" href="#" id="save-full-link" aria-disabled="true" download>Save full PDF</a>
+          <button class="result-link disabled" type="button" id="share-full-btn" disabled>Share full PDF</button>
           <button class="result-link disabled" type="button" id="synopsis-btn" disabled>Brief synopsis</button>
         </div>
         <pre class="log" id="message-log">Choose the files, fill the flying ID, then generate.</pre>
@@ -319,6 +321,8 @@
       const txtLink = document.getElementById("txt-link");
       const cardLink = document.getElementById("card-link");
       const fullLink = document.getElementById("full-link");
+      const saveFullLink = document.getElementById("save-full-link");
+      const shareFullBtn = document.getElementById("share-full-btn");
       const synopsisBtn = document.getElementById("synopsis-btn");
       const pdfInput = document.getElementById("pdf");
       const tripKitInput = document.getElementById("trip_kit");
@@ -754,6 +758,10 @@
         renderFlightList("sfoPsc", sfoPscResults, "SFO-PSC");
       }
 
+      function absoluteUrl(href) {
+        return new URL(href, window.location.href).toString();
+      }
+
       function setLinks(result) {
         currentResult = result || null;
         const txtHref = result?.txt_url || result?.text || null;
@@ -776,6 +784,23 @@
             el.setAttribute("aria-disabled", "true");
           }
         });
+        const fullDownloadHref = fullHref || (result ? "/api/download?kind=full" : null);
+        if (fullDownloadHref && result) {
+          saveFullLink.href = fullDownloadHref;
+          saveFullLink.download = result.source_pdf_name ? `${result.source_pdf_name.replace(/\.pdf$/i, "")}-brief.pdf` : "flight-brief.pdf";
+          saveFullLink.classList.remove("disabled");
+          saveFullLink.removeAttribute("aria-disabled");
+          shareFullBtn.disabled = false;
+          shareFullBtn.classList.remove("disabled");
+          shareFullBtn.dataset.shareUrl = absoluteUrl(fullDownloadHref);
+        } else {
+          saveFullLink.href = "#";
+          saveFullLink.classList.add("disabled");
+          saveFullLink.setAttribute("aria-disabled", "true");
+          shareFullBtn.disabled = true;
+          shareFullBtn.classList.add("disabled");
+          delete shareFullBtn.dataset.shareUrl;
+        }
         const synopsisReady = Boolean(result?.synopsis);
         const synopsisDisabled = !result || (isHostedPhoneApp() && !synopsisReady);
         synopsisBtn.disabled = synopsisDisabled;
@@ -1144,6 +1169,26 @@
         }
       }
 
+      async function shareFullBrief() {
+        const url = shareFullBtn.dataset.shareUrl;
+        if (!url) return;
+        const title = currentResult?.source_pdf_name || "Flight Brief";
+        try {
+          if (navigator.share) {
+            await navigator.share({ title, url });
+            setLog("Share sheet opened for the full pilot brief.");
+          } else if (navigator.clipboard?.writeText) {
+            await navigator.clipboard.writeText(url);
+            setLog("Full pilot brief link copied. Paste it into Messages, Mail, or Notes.");
+          } else {
+            window.location.href = url;
+            setLog("Opened the full pilot brief. Use the browser share or save control.");
+          }
+        } catch (error) {
+          setLog(`Share failed.\n${error.message}`);
+        }
+      }
+
       async function buildSynopsis() {
         if (isHostedPhoneApp()) {
           if (currentResult?.synopsis) window.location.href = synopsisViewerUrl(currentResult.synopsis);
@@ -1170,6 +1215,7 @@
 
       refreshBtn.addEventListener("click", loadLatest);
       publishBtn.addEventListener("click", publishToPhone);
+      shareFullBtn.addEventListener("click", shareFullBrief);
       synopsisBtn.addEventListener("click", buildSynopsis);
       refreshResourcesBtn.addEventListener("click", loadResources);
       resourceSearchBtn.addEventListener("click", searchResources);
