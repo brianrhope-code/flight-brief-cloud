@@ -1,4 +1,4 @@
-const CACHE_NAME = "flight-brief-v15";
+const CACHE_NAME = "flight-brief-v16";
 const ASSETS = [
   "/",
   "/index.html",

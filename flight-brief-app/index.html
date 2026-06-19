@@ -55,7 +55,7 @@
       .section-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
       .section-head h3 { margin: 0; color: var(--blue-dark); font-size: 18px; }
       .muted { color: var(--muted); font-size: 13px; }
-      .result-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+      .result-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 10px; }
       .result-link { display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--border); background: #f9fbfd; color: var(--blue-dark); text-decoration: none; font-weight: 700; }
       .result-link.disabled { opacity: 0.55; pointer-events: none; }
       .log { margin: 0; padding: 14px; border-radius: 14px; background: #0e2131; color: #e6eef6; min-height: 120px; white-space: pre-wrap; word-break: break-word; line-height: 1.45; font-size: 13px; }
@@ -234,6 +234,7 @@
         </div>
         <div class="result-grid" id="result-grid">
           <a class="result-link disabled" href="#" id="txt-link" aria-disabled="true">Open text</a>
+          <button class="result-link disabled" type="button" id="copy-text-btn" disabled>Copy all text</button>
           <a class="result-link disabled" href="#" id="card-link" aria-disabled="true">Open card PDF</a>
           <a class="result-link disabled" href="#" id="full-link" aria-disabled="true">Open full PDF</a>
           <a class="result-link disabled" href="#" id="save-full-link" aria-disabled="true" download>Save full PDF</a>
@@ -319,6 +320,7 @@
       const resourceSearchBtn = document.getElementById("resource-search-btn");
       const resourceSearchResults = document.getElementById("resource-search-results");
       const txtLink = document.getElementById("txt-link");
+      const copyTextBtn = document.getElementById("copy-text-btn");
       const cardLink = document.getElementById("card-link");
       const fullLink = document.getElementById("full-link");
       const saveFullLink = document.getElementById("save-full-link");
@@ -784,6 +786,16 @@
             el.setAttribute("aria-disabled", "true");
           }
         });
+        const textDownloadHref = txtHref || (result ? "/api/download?kind=txt" : null);
+        if (textDownloadHref && result) {
+          copyTextBtn.disabled = false;
+          copyTextBtn.classList.remove("disabled");
+          copyTextBtn.dataset.textUrl = absoluteUrl(textDownloadHref);
+        } else {
+          copyTextBtn.disabled = true;
+          copyTextBtn.classList.add("disabled");
+          delete copyTextBtn.dataset.textUrl;
+        }
         const fullDownloadHref = fullHref || (result ? "/api/download?kind=full" : null);
         if (fullDownloadHref && result) {
           saveFullLink.href = fullDownloadHref;
@@ -1189,6 +1201,25 @@
         }
       }
 
+      async function copyBriefText() {
+        const url = copyTextBtn.dataset.textUrl;
+        if (!url) return;
+        copyTextBtn.disabled = true;
+        copyTextBtn.textContent = "Copying...";
+        try {
+          const response = await fetch(url, { cache: "no-store" });
+          if (!response.ok) throw new Error("Could not load the brief text.");
+          const text = await response.text();
+          await navigator.clipboard.writeText(text);
+          setLog(`Copied ${text.length.toLocaleString()} characters of brief text.`);
+        } catch (error) {
+          setLog(`Copy failed.\n${error.message}\nUse Open text, then select all and copy.`);
+        } finally {
+          copyTextBtn.disabled = false;
+          copyTextBtn.textContent = "Copy all text";
+        }
+      }
+
       async function buildSynopsis() {
         if (isHostedPhoneApp()) {
           if (currentResult?.synopsis) window.location.href = synopsisViewerUrl(currentResult.synopsis);
@@ -1215,6 +1246,7 @@
 
       refreshBtn.addEventListener("click", loadLatest);
       publishBtn.addEventListener("click", publishToPhone);
+      copyTextBtn.addEventListener("click", copyBriefText);
       shareFullBtn.addEventListener("click", shareFullBrief);
       synopsisBtn.addEventListener("click", buildSynopsis);
       refreshResourcesBtn.addEventListener("click", loadResources);
