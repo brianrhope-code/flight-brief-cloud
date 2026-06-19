@@ -85,19 +85,14 @@
       .commute-panel { padding: 14px; display: grid; gap: 12px; }
       .commute-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
       .commute-head h3 { margin: 0; color: var(--blue-dark); font-size: 18px; }
-      .commute-controls { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+      .commute-controls { display: grid; grid-template-columns: minmax(180px, 260px) minmax(0, 1fr); gap: 10px; align-items: end; }
       .commute-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
       .commute-card { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 14px; background: #fff; }
       .commute-card h4 { margin: 0; color: var(--blue-dark); font-size: 15px; }
-      .commute-rows { display: grid; gap: 8px; }
-      .commute-row { display: grid; grid-template-columns: 0.9fr 0.8fr 0.8fr auto; gap: 8px; align-items: end; padding-top: 8px; border-top: 1px solid var(--border); }
-      .commute-row input { width: 100%; border: 1px solid var(--border); border-radius: 12px; background: #f9fbfd; padding: 10px 10px; font: inherit; color: var(--text); min-width: 0; }
-      .commute-row button { min-height: 42px; padding: 9px 11px; border-radius: 10px; }
+      .commute-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+      .commute-actions a { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 11px 14px; border-radius: 12px; border: 1px solid var(--border); color: var(--blue-dark); background: #fff; font-weight: 800; text-decoration: none; }
       .commute-result { display: grid; gap: 8px; }
       .commute-option { display: grid; gap: 4px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: #f8fafc; }
-      .commute-option.good { background: #edf7f1; border-color: #bcdccf; }
-      .commute-option.tight { background: #fff6dc; border-color: #ead18e; }
-      .commute-option.bad { background: #f8e8e8; border-color: #e3b8b8; }
       .commute-option .row { display: flex; justify-content: space-between; gap: 10px; }
       .commute-option .label { font-weight: 800; color: var(--blue-dark); }
       .commute-option .meta { color: var(--muted); font-size: 12px; line-height: 1.35; }
@@ -129,7 +124,6 @@
         .result-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .resource-form { grid-template-columns: 1fr; }
         .commute-controls, .commute-columns { grid-template-columns: 1fr; }
-        .commute-row { grid-template-columns: 1fr; }
         .actions { flex-direction: column; }
         .resource-actions { flex-direction: column; }
         .resource-search { grid-template-columns: 1fr; }
@@ -248,47 +242,34 @@
 
       <section class="panel commute-panel">
         <div class="commute-head">
-          <h3>PSC/SFO Commute Check</h3>
-          <span class="muted" id="commute-status">Candidate schedule - verify each date.</span>
+          <h3>PSC/SFO Flight Calendar</h3>
+          <span class="muted" id="commute-status">Choose a date, then verify live.</span>
         </div>
         <div class="commute-controls">
           <section class="field-card">
             <label for="commute_date">Travel date</label>
             <input id="commute_date" type="date" />
           </section>
-          <section class="field-card">
-            <label for="sfo_report_time">Need to be at SFO by</label>
-            <input id="sfo_report_time" type="time" />
-          </section>
-          <section class="field-card">
-            <label for="sfo_release_time">Released / arrive SFO</label>
-            <input id="sfo_release_time" type="time" />
-          </section>
-          <section class="field-card">
-            <label for="commute_buffer">Minimum buffer minutes</label>
-            <input id="commute_buffer" type="text" inputmode="numeric" value="45" />
-          </section>
+          <div class="commute-actions">
+            <a href="https://www.united.com/en/us/flightstatus/" target="_blank" rel="noopener" id="united-status-link">United status</a>
+            <a href="https://www.united.com/en/us/" target="_blank" rel="noopener" id="united-psc-sfo-link">United PSC-SFO</a>
+            <a href="https://www.united.com/en/us/" target="_blank" rel="noopener" id="united-sfo-psc-link">United SFO-PSC</a>
+            <a href="https://www.google.com/travel/flights" target="_blank" rel="noopener" id="google-psc-sfo-link">Google PSC-SFO</a>
+            <a href="https://www.google.com/travel/flights" target="_blank" rel="noopener" id="google-sfo-psc-link">Google SFO-PSC</a>
+          </div>
         </div>
         <div class="commute-columns">
           <div class="commute-card">
-            <div class="commute-head">
-              <h4>PSC to SFO before report</h4>
-              <button class="secondary" type="button" id="add-psc-sfo">Add</button>
-            </div>
-            <div class="commute-rows" id="psc-sfo-rows"></div>
+            <h4>PSC to SFO</h4>
             <div class="commute-result" id="psc-sfo-results"></div>
           </div>
           <div class="commute-card">
-            <div class="commute-head">
-              <h4>SFO to PSC after release</h4>
-              <button class="secondary" type="button" id="add-sfo-psc">Add</button>
-            </div>
-            <div class="commute-rows" id="sfo-psc-rows"></div>
+            <h4>SFO to PSC</h4>
             <div class="commute-result" id="sfo-psc-results"></div>
           </div>
         </div>
         <div class="commute-note">
-          Times are local Pacific. Use the default rows as watchlist candidates only; United can vary flight numbers and times by date.
+          The list below is a quick watchlist only. United can change flight numbers, times, days of operation, and availability by date. Use United for source-of-truth status and Google Flights as a second schedule check.
         </div>
       </section>
 
@@ -355,24 +336,19 @@
       const trackerList = document.getElementById("tracker-list");
       const TAKEOFF_KEY = "flight-brief-takeoff-time-v1";
       const commuteDateInput = document.getElementById("commute_date");
-      const sfoReportInput = document.getElementById("sfo_report_time");
-      const sfoReleaseInput = document.getElementById("sfo_release_time");
-      const commuteBufferInput = document.getElementById("commute_buffer");
-      const pscSfoRows = document.getElementById("psc-sfo-rows");
-      const sfoPscRows = document.getElementById("sfo-psc-rows");
       const pscSfoResults = document.getElementById("psc-sfo-results");
       const sfoPscResults = document.getElementById("sfo-psc-results");
-      const addPscSfoBtn = document.getElementById("add-psc-sfo");
-      const addSfoPscBtn = document.getElementById("add-sfo-psc");
-      const COMMUTE_KEY = "flight-brief-psc-sfo-commute-v1";
+      const unitedStatusLink = document.getElementById("united-status-link");
+      const unitedPscSfoLink = document.getElementById("united-psc-sfo-link");
+      const unitedSfoPscLink = document.getElementById("united-sfo-psc-link");
+      const googlePscSfoLink = document.getElementById("google-psc-sfo-link");
+      const googleSfoPscLink = document.getElementById("google-sfo-psc-link");
+      const COMMUTE_KEY = "flight-brief-psc-sfo-calendar-v2";
       let timelinePoints = [];
       let currentResult = null;
       let activeUploads = {};
       let commuteState = {
         date: "",
-        report: "",
-        release: "",
-        buffer: "45",
         pscSfo: [
           { flight: "UA6046", depart: "07:00", arrive: "09:09" },
           { flight: "UA5578", depart: "13:35", arrive: "15:41" },
@@ -667,150 +643,71 @@
         return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
       }
 
-      function parseClockMinutes(value) {
-        const text = String(value || "").trim();
-        const match = text.match(/^(\d{1,2}):(\d{2})(\+1)?$/);
-        if (!match) return null;
-        const hours = Number(match[1]);
-        const minutes = Number(match[2]);
-        if (hours > 23 || minutes > 59) return null;
-        return hours * 60 + minutes + (match[3] ? 1440 : 0);
-      }
-
-      function formatDuration(totalMinutes) {
-        if (!Number.isFinite(totalMinutes)) return "--";
-        const sign = totalMinutes < 0 ? "-" : "";
-        const absolute = Math.abs(totalMinutes);
-        const hours = Math.floor(absolute / 60);
-        const minutes = absolute % 60;
-        return `${sign}${hours}h ${String(minutes).padStart(2, "0")}m`;
-      }
-
       function loadCommuteState() {
         try {
           const saved = JSON.parse(localStorage.getItem(COMMUTE_KEY) || "null");
           if (saved) {
-            commuteState = {
-              ...commuteState,
-              ...saved,
-              pscSfo: Array.isArray(saved.pscSfo) && saved.pscSfo.length ? saved.pscSfo : commuteState.pscSfo,
-              sfoPsc: Array.isArray(saved.sfoPsc) && saved.sfoPsc.length ? saved.sfoPsc : commuteState.sfoPsc,
-            };
+            commuteState.date = saved.date || commuteState.date;
           }
         } catch (error) {
           localStorage.removeItem(COMMUTE_KEY);
         }
         if (!commuteState.date) commuteState.date = todayIsoDate();
         commuteDateInput.value = commuteState.date;
-        sfoReportInput.value = commuteState.report || "";
-        sfoReleaseInput.value = commuteState.release || "";
-        commuteBufferInput.value = commuteState.buffer || "45";
       }
 
       function saveCommuteState() {
         commuteState.date = commuteDateInput.value;
-        commuteState.report = sfoReportInput.value;
-        commuteState.release = sfoReleaseInput.value;
-        commuteState.buffer = commuteBufferInput.value || "45";
-        localStorage.setItem(COMMUTE_KEY, JSON.stringify(commuteState));
+        localStorage.setItem(COMMUTE_KEY, JSON.stringify({ date: commuteState.date }));
       }
 
-      function optionStatus(delta, buffer) {
-        if (!Number.isFinite(delta)) return "bad";
-        if (delta >= buffer) return "good";
-        if (delta >= 0) return "tight";
-        return "bad";
+      function unitedBookingUrl(origin, destination) {
+        const date = commuteDateInput.value || todayIsoDate();
+        const query = new URLSearchParams({
+          f: origin,
+          t: destination,
+          d: date,
+          sc: "7",
+          px: "1",
+          taxng: "1",
+        });
+        return `https://www.united.com/en/us/fsr/choose-flights?${query.toString()}`;
       }
 
-      function statusText(status, positiveText) {
-        if (status === "good") return positiveText;
-        if (status === "tight") return "Tight: inside selected buffer";
-        return "Will not work with these times";
+      function googleFlightsUrl(origin, destination) {
+        const date = commuteDateInput.value || todayIsoDate();
+        const query = new URLSearchParams({
+          q: `Flights from ${origin} to ${destination} on ${date}`,
+        });
+        return `https://www.google.com/travel/flights?${query.toString()}`;
       }
 
-      function renderCommuteRows(kind, target) {
-        const rows = commuteState[kind];
-        target.innerHTML = rows
-          .map((row, index) => `
-            <div class="commute-row">
-              <label>Flight
-                <input data-commute-kind="${kind}" data-commute-index="${index}" data-commute-field="flight" value="${escapeHtml(row.flight)}" placeholder="UA5491" />
-              </label>
-              <label>Depart
-                <input data-commute-kind="${kind}" data-commute-index="${index}" data-commute-field="depart" value="${escapeHtml(row.depart)}" placeholder="09:15" />
-              </label>
-              <label>Arrive
-                <input data-commute-kind="${kind}" data-commute-index="${index}" data-commute-field="arrive" value="${escapeHtml(row.arrive)}" placeholder="11:27 or 00:46+1" />
-              </label>
-              <button class="secondary" type="button" data-remove-commute="${kind}" data-remove-index="${index}">Remove</button>
+      function renderFlightList(kind, target, routeLabel) {
+        target.innerHTML = commuteState[kind]
+          .map((flight) => `
+            <div class="commute-option">
+              <div class="row">
+                <div class="label">${escapeHtml(flight.flight)} ${routeLabel}</div>
+                <strong>${escapeHtml(flight.depart)}-${escapeHtml(flight.arrive)}</strong>
+              </div>
+              <div class="meta">Watchlist candidate for ${escapeHtml(commuteDateInput.value || todayIsoDate())}; verify actual operation and availability on United.</div>
             </div>
           `)
           .join("");
       }
 
-      function renderPscToSfoResults(buffer) {
-        const report = parseClockMinutes(sfoReportInput.value);
-        if (report === null) {
-          pscSfoResults.innerHTML = '<div class="commute-option"><div class="meta">Enter the SFO report time to check PSC to SFO commute options.</div></div>';
-          return;
-        }
-        pscSfoResults.innerHTML = commuteState.pscSfo
-          .map((flight) => {
-            const arrival = parseClockMinutes(flight.arrive);
-            const delta = arrival === null ? NaN : report - arrival;
-            const status = optionStatus(delta, buffer);
-            return `
-              <div class="commute-option ${status}">
-                <div class="row">
-                  <div class="label">${escapeHtml(flight.flight || "Flight")} PSC-SFO</div>
-                  <strong>${formatDuration(delta)}</strong>
-                </div>
-                <div class="meta">${escapeHtml(flight.depart || "--:--")} to ${escapeHtml(flight.arrive || "--:--")} | ${statusText(status, "SFO layover before report")}</div>
-              </div>
-            `;
-          })
-          .join("");
-      }
-
-      function renderSfoToPscResults(buffer) {
-        const release = parseClockMinutes(sfoReleaseInput.value);
-        if (release === null) {
-          sfoPscResults.innerHTML = '<div class="commute-option"><div class="meta">Enter the SFO arrival or release time to check SFO to PSC commute-home options.</div></div>';
-          return;
-        }
-        sfoPscResults.innerHTML = commuteState.sfoPsc
-          .map((flight) => {
-            const depart = parseClockMinutes(flight.depart);
-            const delta = depart === null ? NaN : depart - release;
-            const status = optionStatus(delta, buffer);
-            return `
-              <div class="commute-option ${status}">
-                <div class="row">
-                  <div class="label">${escapeHtml(flight.flight || "Flight")} SFO-PSC</div>
-                  <strong>${formatDuration(delta)}</strong>
-                </div>
-                <div class="meta">${escapeHtml(flight.depart || "--:--")} to ${escapeHtml(flight.arrive || "--:--")} | ${statusText(status, "Connection after SFO arrival/release")}</div>
-              </div>
-            `;
-          })
-          .join("");
-      }
-
       function renderCommuteCheck() {
-        if (!pscSfoRows || !sfoPscRows) return;
-        const buffer = Number.parseInt(commuteBufferInput.value || "45", 10);
-        const safeBuffer = Number.isFinite(buffer) ? buffer : 45;
-        renderCommuteRows("pscSfo", pscSfoRows);
-        renderCommuteRows("sfoPsc", sfoPscRows);
-        renderPscToSfoResults(safeBuffer);
-        renderSfoToPscResults(safeBuffer);
-      }
-
-      function renderCommuteResultsOnly() {
-        const buffer = Number.parseInt(commuteBufferInput.value || "45", 10);
-        const safeBuffer = Number.isFinite(buffer) ? buffer : 45;
-        renderPscToSfoResults(safeBuffer);
-        renderSfoToPscResults(safeBuffer);
+        if (!pscSfoResults || !sfoPscResults) return;
+        const selectedDate = commuteDateInput.value || todayIsoDate();
+        unitedStatusLink.href = "https://www.united.com/en/us/flightstatus/";
+        unitedPscSfoLink.href = unitedBookingUrl("PSC", "SFO");
+        unitedSfoPscLink.href = unitedBookingUrl("SFO", "PSC");
+        googlePscSfoLink.href = googleFlightsUrl("PSC", "SFO");
+        googleSfoPscLink.href = googleFlightsUrl("SFO", "PSC");
+        unitedPscSfoLink.textContent = `United PSC-SFO ${selectedDate}`;
+        unitedSfoPscLink.textContent = `United SFO-PSC ${selectedDate}`;
+        renderFlightList("pscSfo", pscSfoResults, "PSC-SFO");
+        renderFlightList("sfoPsc", sfoPscResults, "SFO-PSC");
       }
 
       function setLinks(result) {
@@ -1282,42 +1179,11 @@
         saveTakeoff();
         renderTracker();
       });
-      [commuteDateInput, sfoReportInput, sfoReleaseInput, commuteBufferInput].forEach((input) => {
-        input.addEventListener("input", () => {
-          saveCommuteState();
-          renderCommuteCheck();
-        });
-        input.addEventListener("change", () => {
-          saveCommuteState();
-          renderCommuteCheck();
-        });
-      });
-      addPscSfoBtn.addEventListener("click", () => {
-        commuteState.pscSfo.push({ flight: "", depart: "", arrive: "" });
+      commuteDateInput.addEventListener("input", () => {
         saveCommuteState();
         renderCommuteCheck();
       });
-      addSfoPscBtn.addEventListener("click", () => {
-        commuteState.sfoPsc.push({ flight: "", depart: "", arrive: "" });
-        saveCommuteState();
-        renderCommuteCheck();
-      });
-      document.addEventListener("input", (event) => {
-        const { commuteKind, commuteIndex, commuteField } = event.target.dataset || {};
-        if (!commuteKind || !commuteField) return;
-        const row = commuteState[commuteKind]?.[Number(commuteIndex)];
-        if (!row) return;
-        row[commuteField] = event.target.value;
-        saveCommuteState();
-        renderCommuteResultsOnly();
-      });
-      document.addEventListener("click", (event) => {
-        const button = event.target.closest("[data-remove-commute]");
-        if (!button) return;
-        const kind = button.dataset.removeCommute;
-        const index = Number(button.dataset.removeIndex);
-        if (!Array.isArray(commuteState[kind])) return;
-        commuteState[kind].splice(index, 1);
+      commuteDateInput.addEventListener("change", () => {
         saveCommuteState();
         renderCommuteCheck();
       });
