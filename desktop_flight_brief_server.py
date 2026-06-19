@@ -706,6 +706,24 @@ class Handler(BaseHTTPRequestHandler):
             "report_time": catalog_entry.get("report_time") or generated_times["report_time"],
             **output_paths,
         }
+        if catalog_entry:
+            for key in (
+                "title",
+                "subtitle",
+                "route",
+                "flight",
+                "date_code",
+                "timeline_points",
+                "etops_cp_details",
+                "top_threats",
+                "dispatcher_notes",
+                "pdf",
+                "full_pdf",
+                "text",
+                "synopsis",
+            ):
+                if key in catalog_entry:
+                    latest[key] = catalog_entry[key]
         if trip_kit_skipped:
             latest["trip_kit_note"] = trip_kit_skipped
         self.update_latest_catalog_times(latest["pickup_time"], latest["report_time"])

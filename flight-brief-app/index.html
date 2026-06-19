@@ -928,6 +928,15 @@
           .join("");
       }
 
+      function applyTimelineFromResult(result) {
+        timelinePoints = (result?.timeline_points || [])
+          .map((point) => ({ ...point, minutes: Number(point.minutes) }))
+          .filter((point) => Number.isFinite(point.minutes))
+          .sort((a, b) => a.minutes - b.minutes);
+        renderTracker();
+        return timelinePoints.length > 0;
+      }
+
       async function loadTimeline() {
         try {
           const res = await fetch("/api/timeline");
@@ -982,11 +991,7 @@
           summarize(latestResult);
           applyGeneratedTimes(latestResult);
           setLog(`Loaded saved phone brief: ${latest.title || "latest brief"}`);
-          timelinePoints = (latest.timeline_points || [])
-            .map((point) => ({ ...point, minutes: Number(point.minutes) }))
-            .filter((point) => Number.isFinite(point.minutes))
-            .sort((a, b) => a.minutes - b.minutes);
-          renderTracker();
+          applyTimelineFromResult(latestResult);
         };
 
         if (isHostedPhoneApp()) {
@@ -1008,7 +1013,7 @@
             summarize(data.latest);
             applyGeneratedTimes(data.latest);
             setLog(data.latest ? `Loaded latest brief: ${data.latest.source_pdf_name || "unknown file"}` : "No prior result found.");
-            await loadTimeline();
+            if (!applyTimelineFromResult(data.latest)) await loadTimeline();
             return;
           }
           setLog(data.error || "No saved result found.");
@@ -1131,7 +1136,7 @@
           applyActiveUploads(payload.result?.active_uploads || payload.result?.uploads || activeUploads);
           applyGeneratedTimes(payload.result);
           summarize(payload.result);
-          await loadTimeline();
+          if (!applyTimelineFromResult(payload.result)) await loadTimeline();
           if (isLocalMacApp()) {
             setLog("Brief generated. Publishing to iPhone/iPad...");
             generateBtn.textContent = "Publishing...";
