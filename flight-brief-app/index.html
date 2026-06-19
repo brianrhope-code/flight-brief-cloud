@@ -96,6 +96,7 @@
       .commute-option .row { display: flex; justify-content: space-between; gap: 10px; }
       .commute-option .label { font-weight: 800; color: var(--blue-dark); }
       .commute-option .meta { color: var(--muted); font-size: 12px; line-height: 1.35; }
+      .commute-empty { color: var(--muted); font-size: 13px; line-height: 1.4; padding: 10px 12px; border: 1px dashed var(--border); border-radius: 12px; background: #fff; }
       .commute-note { color: var(--muted); font-size: 13px; line-height: 1.4; }
       .resource-panel { padding: 14px; display: grid; gap: 12px; }
       .resource-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
@@ -269,7 +270,7 @@
           </div>
         </div>
         <div class="commute-note">
-          The list below is a quick watchlist only. United can change flight numbers, times, days of operation, and availability by date. Use United for source-of-truth status and Google Flights as a second schedule check.
+          The rows above are exact only when the live Google Flights provider is configured. United remains the source-of-truth before travel.
         </div>
       </section>
 
@@ -347,17 +348,8 @@
       let timelinePoints = [];
       let currentResult = null;
       let activeUploads = {};
-      let commuteState = {
-        date: "",
-        pscSfo: [
-          { flight: "UA6046", depart: "07:00", arrive: "09:09" },
-          { flight: "UA5578", depart: "13:35", arrive: "15:41" },
-        ],
-        sfoPsc: [
-          { flight: "UA5491", depart: "09:15", arrive: "11:27" },
-          { flight: "UA6044", depart: "22:40", arrive: "00:46+1" },
-        ],
-      };
+      let commuteState = { date: "" };
+      let commuteFlights = { configured: false, loading: false, error: "", routes: { pscSfo: [], sfoPsc: [] } };
 
       const macGenerateLabel = "Generate & publish";
 
@@ -682,18 +674,70 @@
         return `https://www.google.com/travel/flights?${query.toString()}`;
       }
 
+      function formatFlightDuration(minutes) {
+        const total = Number(minutes);
+        if (!Number.isFinite(total) || total <= 0) return "";
+        const hours = Math.floor(total / 60);
+        const mins = total % 60;
+        return `${hours}h ${String(mins).padStart(2, "0")}m`;
+      }
+
       function renderFlightList(kind, target, routeLabel) {
-        target.innerHTML = commuteState[kind]
+        if (commuteFlights.loading) {
+          target.innerHTML = '<div class="commute-empty">Checking live flights for the selected date...</div>';
+          return;
+        }
+        if (commuteFlights.error) {
+          target.innerHTML = `<div class="commute-empty">${escapeHtml(commuteFlights.error)}</div>`;
+          return;
+        }
+        if (!commuteFlights.configured) {
+          target.innerHTML = '<div class="commute-empty">Live schedule lookup is not configured yet. Add SERPAPI_KEY on the server to show exact Google Flights departure and arrival times here.</div>';
+          return;
+        }
+        const flights = commuteFlights.routes?.[kind] || [];
+        if (!flights.length) {
+          target.innerHTML = `<div class="commute-empty">No nonstop United flights returned for ${escapeHtml(routeLabel)} on ${escapeHtml(commuteDateInput.value || todayIsoDate())}.</div>`;
+          return;
+        }
+        target.innerHTML = flights
           .map((flight) => `
             <div class="commute-option">
               <div class="row">
-                <div class="label">${escapeHtml(flight.flight)} ${routeLabel}</div>
+                <div class="label">${escapeHtml(flight.flight || "United")} ${routeLabel}</div>
                 <strong>${escapeHtml(flight.depart)}-${escapeHtml(flight.arrive)}</strong>
               </div>
-              <div class="meta">Watchlist candidate for ${escapeHtml(commuteDateInput.value || todayIsoDate())}; verify actual operation and availability on United.</div>
+              <div class="meta">${escapeHtml(formatFlightDuration(flight.duration_min))}${flight.aircraft ? ` | ${escapeHtml(flight.aircraft)}` : ""} | ${escapeHtml(flight.source || "Live schedule")}</div>
             </div>
           `)
           .join("");
+      }
+
+      async function loadCommuteFlights() {
+        commuteFlights = { ...commuteFlights, loading: true, error: "" };
+        renderCommuteCheck();
+        const date = commuteDateInput.value || todayIsoDate();
+        try {
+          const response = await fetch(`/api/commute-flights?date=${encodeURIComponent(date)}`);
+          const data = await response.json();
+          if (!response.ok || !data.ok) {
+            throw new Error(data.error || "Could not load live flights.");
+          }
+          commuteFlights = {
+            configured: Boolean(data.configured),
+            loading: false,
+            error: "",
+            routes: data.routes || { pscSfo: [], sfoPsc: [] },
+          };
+        } catch (error) {
+          commuteFlights = {
+            configured: false,
+            loading: false,
+            error: `Could not load live schedule: ${error.message}`,
+            routes: { pscSfo: [], sfoPsc: [] },
+          };
+        }
+        renderCommuteCheck();
       }
 
       function renderCommuteCheck() {
@@ -1181,11 +1225,11 @@
       });
       commuteDateInput.addEventListener("input", () => {
         saveCommuteState();
-        renderCommuteCheck();
+        loadCommuteFlights();
       });
       commuteDateInput.addEventListener("change", () => {
         saveCommuteState();
-        renderCommuteCheck();
+        loadCommuteFlights();
       });
 
       if ("serviceWorker" in navigator) {
@@ -1196,7 +1240,7 @@
 
       loadSavedTakeoff();
       loadCommuteState();
-      renderCommuteCheck();
+      loadCommuteFlights();
       if (isHostedPhoneApp()) {
         generateBtn.textContent = "View published brief";
         publishBtn.disabled = true;

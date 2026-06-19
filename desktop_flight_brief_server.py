@@ -14,6 +14,8 @@ import subprocess
 import sys
 import tempfile
 import threading
+import urllib.error
+import urllib.request
 import uuid
 import zipfile
 from datetime import datetime
@@ -22,7 +24,7 @@ from email.parser import BytesParser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 
 from pypdf import PdfReader
 
@@ -46,6 +48,7 @@ CLOUD_MODE = os.environ.get("FLIGHT_BRIEF_CLOUD_MODE", "").lower() in {"1", "tru
 GENERATE_JOBS: dict[str, dict] = {}
 GENERATE_JOBS_LOCK = threading.Lock()
 CLOUD_TRIP_KIT_MAX_BYTES = int(os.environ.get("FLIGHT_BRIEF_CLOUD_TRIP_KIT_MAX_BYTES", str(160 * 1024 * 1024)))
+SERPAPI_KEY = os.environ.get("SERPAPI_KEY", "").strip()
 NPX_CANDIDATES = [
     Path("/Users/brianhope/.nvm/versions/node/v24.14.0/bin/npx"),
     Path("/opt/homebrew/bin/npx"),
@@ -228,6 +231,84 @@ def parse_generated_times(txt_path: Path | str | None) -> dict[str, str]:
     }
 
 
+def validate_schedule_date(value: str) -> str:
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date().isoformat()
+    except ValueError as exc:
+        raise ValueError("date must be YYYY-MM-DD") from exc
+
+
+def display_flight_time(value: str) -> str:
+    text = str(value or "").strip()
+    if " " in text:
+        return text.rsplit(" ", 1)[-1]
+    return text
+
+
+def extract_google_flights(payload: dict, origin: str, destination: str) -> list[dict[str, str]]:
+    results = []
+    for itinerary in (payload.get("best_flights") or []) + (payload.get("other_flights") or []):
+        segments = itinerary.get("flights") or []
+        if len(segments) != 1:
+            continue
+        segment = segments[0]
+        departure = segment.get("departure_airport") or {}
+        arrival = segment.get("arrival_airport") or {}
+        if departure.get("id") != origin or arrival.get("id") != destination:
+            continue
+        airline = str(segment.get("airline") or "")
+        flight_number = str(segment.get("flight_number") or "")
+        if "United" not in airline and not flight_number.upper().startswith("UA"):
+            continue
+        results.append(
+            {
+                "flight": flight_number or airline or "United",
+                "airline": airline or "United",
+                "depart": display_flight_time(departure.get("time", "")),
+                "arrive": display_flight_time(arrival.get("time", "")),
+                "origin": origin,
+                "destination": destination,
+                "duration_min": itinerary.get("total_duration") or segment.get("duration") or "",
+                "aircraft": segment.get("airplane") or "",
+                "source": "Google Flights via SerpApi",
+            }
+        )
+    deduped = []
+    seen = set()
+    for result in results:
+        key = (result["flight"], result["depart"], result["arrive"], result["origin"], result["destination"])
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(result)
+    return deduped
+
+
+def fetch_google_flights(origin: str, destination: str, travel_date: str) -> list[dict[str, str]]:
+    params = {
+        "engine": "google_flights",
+        "departure_id": origin,
+        "arrival_id": destination,
+        "outbound_date": travel_date,
+        "type": "2",
+        "adults": "1",
+        "currency": "USD",
+        "hl": "en",
+        "gl": "us",
+        "stops": "1",
+        "include_airlines": "UA",
+        "show_hidden": "true",
+        "api_key": SERPAPI_KEY,
+    }
+    request = urllib.request.Request(
+        f"https://serpapi.com/search.json?{urlencode(params)}",
+        headers={"User-Agent": "FlightBrief/1.0"},
+    )
+    with urllib.request.urlopen(request, timeout=15) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    return extract_google_flights(payload, origin, destination)
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "FlightBriefDesktop/1.0"
 
@@ -282,6 +363,9 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/timeline":
             self.handle_timeline()
             return
+        if parsed.path == "/api/commute-flights":
+            self.handle_commute_flights(parsed.query)
+            return
         if parsed.path == "/api/health":
             self.respond_json(
                 {
@@ -308,6 +392,49 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         self.serve_static(STATIC_FILES.get(parsed.path, WEB_APP_DIR / "index.html"))
+
+    def handle_commute_flights(self, query: str) -> None:
+        params = parse_qs(query)
+        try:
+            travel_date = validate_schedule_date((params.get("date") or [""])[0] or datetime.now().date().isoformat())
+        except ValueError as exc:
+            self.respond_json({"ok": False, "error": str(exc)}, status=HTTPStatus.BAD_REQUEST)
+            return
+
+        if not SERPAPI_KEY:
+            self.respond_json(
+                {
+                    "ok": True,
+                    "configured": False,
+                    "date": travel_date,
+                    "message": "Live Google Flights schedule lookup needs SERPAPI_KEY configured on the server.",
+                    "routes": {"pscSfo": [], "sfoPsc": []},
+                }
+            )
+            return
+
+        try:
+            self.respond_json(
+                {
+                    "ok": True,
+                    "configured": True,
+                    "date": travel_date,
+                    "routes": {
+                        "pscSfo": fetch_google_flights("PSC", "SFO", travel_date),
+                        "sfoPsc": fetch_google_flights("SFO", "PSC", travel_date),
+                    },
+                }
+            )
+        except (OSError, urllib.error.URLError, json.JSONDecodeError) as exc:
+            self.respond_json(
+                {
+                    "ok": False,
+                    "configured": True,
+                    "date": travel_date,
+                    "error": f"Live flight lookup failed: {exc}",
+                },
+                status=HTTPStatus.BAD_GATEWAY,
+            )
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
