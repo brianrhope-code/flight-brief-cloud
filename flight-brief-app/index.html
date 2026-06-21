@@ -145,7 +145,7 @@
       <section class="panel hero">
         <div class="hero-copy">
           <p class="hero-kicker">Gold Standard Pilot Brief</p>
-          <h2>Build from the current flight plan, trip kit, and flying ID.</h2>
+          <h2>Build from the current flight plan, trip kit, and pairing.</h2>
         </div>
         <div class="hero-meta" id="latest-summary">Ready when you are.</div>
       </section>
@@ -167,21 +167,6 @@
           <label for="pairing">Pairing / crew list</label>
           <input id="pairing" name="pairing" type="file" accept="application/pdf" />
           <div class="active-file" id="pairing-active">No active pairing yet.</div>
-        </section>
-
-        <section class="field-card">
-          <label for="flying_id">Current flying ID</label>
-          <input id="flying_id" name="flying_id" type="text" placeholder="UA1818" autocomplete="off" />
-        </section>
-
-        <section class="field-card">
-          <label for="pickup_time">Pickup time</label>
-          <input id="pickup_time" name="pickup_time" type="text" placeholder="Local or Z" autocomplete="off" />
-        </section>
-
-        <section class="field-card">
-          <label for="report_time">Report time</label>
-          <input id="report_time" name="report_time" type="text" placeholder="Local or Z" autocomplete="off" />
         </section>
 
         <div class="actions">
@@ -332,6 +317,7 @@
       const pdfActive = document.getElementById("pdf-active");
       const tripKitActive = document.getElementById("trip-kit-active");
       const pairingActive = document.getElementById("pairing-active");
+      const flyingIdInput = document.getElementById("flying_id");
       const pickupInput = document.getElementById("pickup_time");
       const reportInput = document.getElementById("report_time");
       const takeoffInput = document.getElementById("takeoff_time");
@@ -409,8 +395,8 @@
       }
 
       function applyGeneratedTimes(result) {
-        if (result?.pickup_time && !pickupInput.value.trim()) pickupInput.value = result.pickup_time;
-        if (result?.report_time && !reportInput.value.trim()) reportInput.value = result.report_time;
+        if (pickupInput && result?.pickup_time && !pickupInput.value.trim()) pickupInput.value = result.pickup_time;
+        if (reportInput && result?.report_time && !reportInput.value.trim()) reportInput.value = result.report_time;
       }
 
       function buildGenerateFormData() {
@@ -426,9 +412,9 @@
         if (flightPlan) data.append("pdf", flightPlan);
         const tripKit = tripKitInput.files[0];
         const pairing = pairingInput.files[0];
-        const flyingId = document.getElementById("flying_id").value.trim();
-        const pickupTime = pickupInput.value.trim();
-        const reportTime = reportInput.value.trim();
+        const flyingId = flyingIdInput?.value.trim() || "";
+        const pickupTime = pickupInput?.value.trim() || "";
+        const reportTime = reportInput?.value.trim() || "";
         if (tripKit) data.append("trip_kit", tripKit);
         if (pairing) data.append("pairing", pairing);
         if (flyingId) data.append("flying_id", flyingId);
@@ -439,9 +425,9 @@
 
       function buildGenerateFieldsFormData() {
         const data = new FormData();
-        const flyingId = document.getElementById("flying_id").value.trim();
-        const pickupTime = pickupInput.value.trim();
-        const reportTime = reportInput.value.trim();
+        const flyingId = flyingIdInput?.value.trim() || "";
+        const pickupTime = pickupInput?.value.trim() || "";
+        const reportTime = reportInput?.value.trim() || "";
         if (flyingId) data.append("flying_id", flyingId);
         if (pickupTime) data.append("pickup_time", pickupTime);
         if (reportTime) data.append("report_time", reportTime);
