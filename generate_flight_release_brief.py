@@ -2165,9 +2165,9 @@ def render_full_brief_pdf(_text_output: str, pdf_path: Path, title: str, data: B
     page_size = landscape(letter)
     c = canvas.Canvas(str(pdf_path), pagesize=page_size)
     width, height = page_size
-    margin_x = 0.38 * inch
-    top = height - 0.42 * inch
-    bottom = 0.42 * inch
+    margin_x = 0.30 * inch
+    top = height - 0.30 * inch
+    bottom = 0.30 * inch
     right = width - margin_x
     usable_w = right - margin_x
     blue = HexColor("#12579a")
@@ -2313,21 +2313,21 @@ def render_full_brief_pdf(_text_output: str, pdf_path: Path, title: str, data: B
         y = top
         if page_title:
             c.setFillColor(HexColor("#202936"))
-            c.setFont("Helvetica", 22)
+            c.setFont("Helvetica", 18)
             c.drawCentredString(width / 2, y, page_title)
-            y -= 0.34 * inch
+            y -= 0.27 * inch
         if subtitle:
             c.setFillColor(blue)
-            c.setFont("Helvetica", 12)
+            c.setFont("Helvetica", 10.5)
             c.drawCentredString(width / 2, y, f"{data.flight.replace(' ', '')} {data.route} | {data.aircraft_reg or '--'} | Gold Standard Pilot Brief v3.4")
         c.setFillColor(HexColor("#777777"))
         c.setFont("Helvetica", 6)
         c.drawString(margin_x + 6, 0.20 * inch, footer[:155])
         c.drawRightString(right - 6, 0.20 * inch, f"Page {page_num}")
 
-    def panel(title_text: str, items: list[str], x: float, y_top: float, w: float, h: float, title_color=blue, bg=light_gray, font_size: float = 8.4) -> None:
+    def panel(title_text: str, items: list[str], x: float, y_top: float, w: float, h: float, title_color=blue, bg=light_gray, font_size: float = 9.6) -> None:
         c.setFillColor(title_color)
-        c.setFont("Helvetica-Bold", 9.1)
+        c.setFont("Helvetica-Bold", 9.8)
         c.drawString(x, y_top - 2, title_text.upper())
         y_box_top = y_top - 12
         c.setFillColor(bg)
@@ -2338,11 +2338,11 @@ def render_full_brief_pdf(_text_output: str, pdf_path: Path, title: str, data: B
         c.setFillColor(TEXT_COLOR)
         c.setFont("Helvetica", font_size)
         for item in items:
-            for idx, line in enumerate(wrap(item, "Helvetica", font_size, w - 24)):
+            for idx, line in enumerate(wrap(item, "Helvetica", font_size, w - 22)):
                 if y < y_box_top - h + 9:
                     return
                 c.drawString(x + 10, y, ("• " if idx == 0 else "  ") + line)
-                y -= font_size + 3.4
+                y -= font_size + 3.0
 
     def table(rows: list[list[str]], col_widths: list[float], x: float, y_top: float, row_h: float, header=True, font_size: float = 7.6) -> float:
         y = y_top
@@ -2462,7 +2462,7 @@ def render_full_brief_pdf(_text_output: str, pdf_path: Path, title: str, data: B
     right_x = margin_x + col_w + col_gap
 
     start_page("PAGE 1 - FLIGHT SUMMARY")
-    top_panel_y = top - 0.78 * inch
+    top_panel_y = top - 0.58 * inch
     flight_summary_items = [
         f"Flight: {data.flight.replace('UAL ', 'UA') or '--'} / {data.date_code or '--'}",
         f"Route: {(data.route or '--').replace('-', ' to ')}",
@@ -2485,15 +2485,15 @@ def render_full_brief_pdf(_text_output: str, pdf_path: Path, title: str, data: B
             f"Dispatcher sector: {data.dispatch_sector or '--'}",
         ]
     )
-    panel("Flight", flight_summary_items, margin_x, top_panel_y, third_w, 0.90 * inch, blue, light_gray, font_size=8.2)
-    panel("Timing", timing_items, margin_x + third_w + col_gap, top_panel_y, third_w, 0.90 * inch, blue, light_blue, font_size=8.2)
-    panel("Crew / Dispatch", crew_summary_items, margin_x + (third_w + col_gap) * 2, top_panel_y, third_w, 0.90 * inch, blue, light_gray, font_size=8.2)
+    panel("Flight", flight_summary_items, margin_x, top_panel_y, third_w, 1.00 * inch, blue, light_gray, font_size=9.4)
+    panel("Timing", timing_items, margin_x + third_w + col_gap, top_panel_y, third_w, 1.00 * inch, blue, light_blue, font_size=9.4)
+    panel("Crew / Dispatch", crew_summary_items, margin_x + (third_w + col_gap) * 2, top_panel_y, third_w, 1.00 * inch, blue, light_gray, font_size=9.4)
 
     crew_detail_items = []
     for row in crew_table_rows(data)[1:]:
         position, name, emp, role, seniority = row
         crew_detail_items.append(f"{position}: {name} | {role} | Emp {emp} | {seniority}")
-    panel("Crew Detail", crew_detail_items or ["Crew not loaded"], margin_x, top - 1.98 * inch, usable_w, 0.72 * inch, blue, light_gray, font_size=7.7)
+    panel("Crew Detail", crew_detail_items or ["Crew not loaded"], margin_x, top - 1.82 * inch, usable_w, 0.92 * inch, blue, light_gray, font_size=8.8)
 
     p_y = top - 3.02 * inch
     fuel_items = [
@@ -2517,21 +2517,21 @@ def render_full_brief_pdf(_text_output: str, pdf_path: Path, title: str, data: B
     wx_items = weather_lines(dep_code, data.departure or dep_code)[:2] + weather_lines(dest_code, data.destination or dest_code)[:2]
     wx_items.append(extract_turbulence_timing(data))
     mx_items = summarize_aircraft_status(data).split("; ") if data.aircraft_notes else ["No aircraft notes extracted; verify MEL/CDL, dispatch items, UTO/NEF."]
-    panel("Fuel", fuel_items, margin_x, p_y, col_w, 1.24 * inch, green, light_green)
-    panel("Weights / Perf", perf_items, margin_x + col_w + col_gap, p_y, col_w, 1.24 * inch, blue, light_gray)
-    lower_y = p_y - 1.50 * inch
-    panel("Weather Snapshot", wx_items, margin_x, lower_y, col_w, 0.82 * inch, blue, light_blue)
-    panel("MX / Cabin", mx_items, margin_x + col_w + col_gap, lower_y, col_w, 0.82 * inch, amber, light_amber)
+    panel("Fuel", fuel_items, margin_x, p_y, col_w, 1.48 * inch, green, light_green)
+    panel("Weights / Perf", perf_items, margin_x + col_w + col_gap, p_y, col_w, 1.48 * inch, blue, light_gray)
+    lower_y = p_y - 1.76 * inch
+    panel("Weather Snapshot", wx_items, margin_x, lower_y, col_w, 1.18 * inch, blue, light_blue, font_size=9.1)
+    panel("MX / Cabin", mx_items, margin_x + col_w + col_gap, lower_y, col_w, 1.18 * inch, amber, light_amber, font_size=9.1)
 
     start_page("PAGE 1B - CABIN / PA BRIEF")
-    panel("Passenger PA", data.passenger_pa_notes, margin_x, top - 0.74 * inch, col_w, 1.18 * inch, blue, light_gray, font_size=8.5)
-    panel("FA Brief", data.fa_discussion_points, margin_x + col_w + col_gap, top - 0.74 * inch, col_w, 1.42 * inch, blue, light_gray, font_size=8.5)
-    panel("Cabin Coordination", ["Seatbelt strategy: brief timing based on ride forecast.", "Arrival prep: coordinate cabin secure target before descent.", "TEST review: Type, Evacuation, Special instructions, Time."], margin_x, top - 2.48 * inch, col_w, 0.96 * inch, amber, light_amber, font_size=8.5)
-    panel("Arrival PA / Customer Notes", [data.passenger_pa_notes[-1] if data.passenger_pa_notes else "Arrival PA not generated.", f"Arrival gate: {data.arrival_gate or 'not shown in release'}", f"Destination weather: {extract_destination_weather_summary(data.raw_text, data.destination_icao or data.destination)}"], margin_x + col_w + col_gap, top - 2.48 * inch, col_w, 0.96 * inch, blue, light_blue, font_size=8.5)
+    panel("Passenger PA", data.passenger_pa_notes, margin_x, top - 0.56 * inch, col_w, 1.66 * inch, blue, light_gray, font_size=9.4)
+    panel("FA Brief", data.fa_discussion_points, margin_x + col_w + col_gap, top - 0.56 * inch, col_w, 1.66 * inch, blue, light_gray, font_size=9.4)
+    panel("Cabin Coordination", ["Seatbelt strategy: brief timing based on ride forecast.", "Arrival prep: coordinate cabin secure target before descent.", "TEST review: Type, Evacuation, Special instructions, Time."], margin_x, top - 2.58 * inch, col_w, 1.36 * inch, amber, light_amber, font_size=9.4)
+    panel("Arrival PA / Customer Notes", [data.passenger_pa_notes[-1] if data.passenger_pa_notes else "Arrival PA not generated.", f"Arrival gate: {data.arrival_gate or 'not shown in release'}", f"Destination weather: {extract_destination_weather_summary(data.raw_text, data.destination_icao or data.destination)}"], margin_x + col_w + col_gap, top - 2.58 * inch, col_w, 1.36 * inch, blue, light_blue, font_size=9.4)
 
     start_page("PAGE 2 - DEPARTURE PLAN")
-    y = top - 0.74 * inch
-    panel("Threats First", threat_items(), margin_x, y, usable_w, 0.96 * inch, amber, light_amber)
+    y = top - 0.56 * inch
+    panel("Threats First", threat_items(), margin_x, y, usable_w, 1.00 * inch, amber, light_amber, font_size=9.4)
     y -= 1.24 * inch
     left_w = col_w
     dep_items = [
@@ -2551,13 +2551,13 @@ def render_full_brief_pdf(_text_output: str, pdf_path: Path, title: str, data: B
         "Microburst or >=30 kt alert for runway: no takeoff initiation or descent below 1000 AGL.",
     ]
     taxi_items = data.departure_notes[4:10] or data.departure_notes[:5] or ["Review airport 10-7, hotspots, construction, taxiway closures, and runway crossings."]
-    panel("Departure Brief", dep_items, margin_x, y, left_w, 1.10 * inch, blue, light_gray)
-    panel("Captain / PF Brief", captain_items, right_x, y, left_w, 1.10 * inch, blue, light_gray)
-    y -= 1.42 * inch
-    panel(f"Operational NOTAMs - {data.departure or dep_code}", notam_items, margin_x, y, left_w, 1.24 * inch, red, light_red)
-    panel("Windshear / Microburst", windshear_items, right_x, y, left_w, 1.02 * inch, red, light_red)
-    y -= 1.58 * inch
-    panel("Taxi / 10-7 Style Notes", taxi_items, margin_x, y, usable_w, 0.86 * inch, blue, light_gray)
+    panel("Departure Brief", dep_items, margin_x, y, left_w, 1.36 * inch, blue, light_gray, font_size=9.1)
+    panel("Captain / PF Brief", captain_items, right_x, y, left_w, 1.36 * inch, blue, light_gray, font_size=9.1)
+    y -= 1.68 * inch
+    panel(f"Operational NOTAMs - {data.departure or dep_code}", notam_items, margin_x, y, left_w, 1.54 * inch, red, light_red, font_size=9.1)
+    panel("Windshear / Microburst", windshear_items, right_x, y, left_w, 1.54 * inch, red, light_red, font_size=9.1)
+    y -= 1.86 * inch
+    panel("Taxi / 10-7 Style Notes", taxi_items, margin_x, y, usable_w, 1.08 * inch, blue, light_gray, font_size=9.1)
 
     start_page("PAGE 3 - TIMELINE / ETOPS / ORCA")
     orca = [
@@ -2569,34 +2569,34 @@ def render_full_brief_pdf(_text_output: str, pdf_path: Path, title: str, data: B
     ]
     c.setFillColor(blue)
     c.setFont("Helvetica-Bold", 9.1)
-    c.drawString(margin_x, top - 0.76 * inch, "START-TO-FINISH TIMELINE")
+    c.drawString(margin_x, top - 0.56 * inch, "START-TO-FINISH TIMELINE")
     c.setFillColor(TEXT_COLOR)
     c.setFont("Helvetica-Bold", 8.6)
-    c.drawRightString(right_x + col_w, top - 0.76 * inch, "ACTUAL T/O TIME: __________  Z / LOCAL")
-    c.setFont("Helvetica", 6.4)
-    c.drawString(margin_x, top - 0.85 * inch, "Running clock reference: actual takeoff time + EET shown in the left column.")
-    timeline_top = top - 0.99 * inch
+    c.drawRightString(right_x + col_w, top - 0.56 * inch, "ACTUAL T/O TIME: __________  Z / LOCAL")
+    c.setFont("Helvetica", 7.0)
+    c.drawString(margin_x, top - 0.68 * inch, "Running clock reference: actual takeoff time + EET shown in the left column.")
+    timeline_top = top - 0.82 * inch
     timeline_bottom = wrapped_table(
         build_operational_timeline_rows(data),
         [0.45 * inch, 1.38 * inch, 1.15 * inch, usable_w - 2.98 * inch],
         margin_x,
         timeline_top,
-        3.97 * inch,
-        font_size=5.65,
+        4.14 * inch,
+        font_size=6.15,
     )
     lower_panel_top = timeline_bottom - 0.18 * inch
-    panel("ORCA Action Guide", orca[:3], margin_x, lower_panel_top, col_w, 0.64 * inch, red, light_red, font_size=6.45)
-    panel("Dispatcher / ETOPS Notes", (data.dispatcher_remarks[:3] + build_pdf_etops_items(data)[:2]) or ["No dispatcher remarks extracted."], right_x, lower_panel_top, col_w, 0.64 * inch, amber, light_amber, font_size=6.45)
-    panel("ETOPS Driftdown / Offset Reminder", ETOPS_DRIFTDOWN_OFFSET, margin_x, lower_panel_top - 1.06 * inch, usable_w, 0.90 * inch, red, light_red, font_size=5.75)
+    panel("ORCA Action Guide", orca[:3], margin_x, lower_panel_top, col_w, 0.76 * inch, red, light_red, font_size=6.95)
+    panel("Dispatcher / ETOPS Notes", (data.dispatcher_remarks[:3] + build_pdf_etops_items(data)[:2]) or ["No dispatcher remarks extracted."], right_x, lower_panel_top, col_w, 0.76 * inch, amber, light_amber, font_size=6.95)
+    panel("ETOPS Driftdown / Offset Reminder", ETOPS_DRIFTDOWN_OFFSET, margin_x, lower_panel_top - 1.15 * inch, usable_w, 1.02 * inch, red, light_red, font_size=6.25)
 
     start_page("PAGE 4 - ARRIVAL PLAN")
     arrival_items = data.arrival_brief_points[:7]
     dest_notes = data.destination_notes[:7] or ["No operational destination NOTAM snippets extracted; verify current NOTAM package."]
     alt_notes = data.alternate_notes[:6] or [f"Alternate {data.dispatch_alternate or '--'}: verify suitability, weather, approaches, and fuel."]
-    panel("Arrival Brief", arrival_items, margin_x, top - 0.74 * inch, usable_w, 1.26 * inch, blue, light_gray)
-    panel(f"Operational NOTAMs - {data.destination or dest_code}", dest_notes, margin_x, top - 2.30 * inch, col_w, 1.18 * inch, red, light_red)
-    panel("Alternate / Diversion", alt_notes, right_x, top - 2.30 * inch, col_w, 1.18 * inch, amber, light_amber)
-    panel("Stabilized Approach / Go-Around", [FM_STABILIZED_APPROACH, FM_GO_AROUND], margin_x, top - 3.78 * inch, usable_w, 0.82 * inch, blue, light_blue)
+    panel("Arrival Brief", arrival_items, margin_x, top - 0.56 * inch, usable_w, 1.52 * inch, blue, light_gray, font_size=9.1)
+    panel(f"Operational NOTAMs - {data.destination or dest_code}", dest_notes, margin_x, top - 2.36 * inch, col_w, 1.48 * inch, red, light_red, font_size=9.1)
+    panel("Alternate / Diversion", alt_notes, right_x, top - 2.36 * inch, col_w, 1.48 * inch, amber, light_amber, font_size=9.1)
+    panel("Stabilized Approach / Go-Around", [FM_STABILIZED_APPROACH, FM_GO_AROUND], margin_x, top - 4.12 * inch, usable_w, 1.10 * inch, blue, light_blue, font_size=8.7)
 
     route_points = compact_route_points()
     threat_waypoints = dedupe_preserve_order(
@@ -2626,10 +2626,10 @@ def render_full_brief_pdf(_text_output: str, pdf_path: Path, title: str, data: B
         panel("ETOPS Weather / Dispatch Watch", wx_items[:4] + threat_items(2), right_x, top - 3.36 * inch, col_w, 1.06 * inch, amber, light_amber)
 
     start_page("PAGE 5 - ETOPS DETAILS")
-    panel("ETOPS Critical Points", data.etops_cp_details or ["No CP detail extracted; verify ETOPS summary in the OFP."], margin_x, top - 0.74 * inch, usable_w, 1.30 * inch, blue, light_blue)
-    panel("Fuel Decision Gates", etops_summary_items or ["Compare actual fuel to OFP required fuel at each CP."], margin_x, top - 2.34 * inch, col_w, 1.24 * inch, green, light_green)
-    panel("ORCA / Diversion Reminders", orca, right_x, top - 2.34 * inch, col_w, 1.24 * inch, red, light_red)
-    panel("HF / Oceanic Checks", ["Confirm HF/SatVoice requirements for route segment.", "SELCAL check when required.", "Position reports / CP tracking per clearance.", "Cabin and dispatch coordination before diversion commitment."], margin_x, top - 3.90 * inch, usable_w, 0.92 * inch, blue, light_gray)
+    panel("ETOPS Critical Points", data.etops_cp_details or ["No CP detail extracted; verify ETOPS summary in the OFP."], margin_x, top - 0.56 * inch, usable_w, 1.52 * inch, blue, light_blue, font_size=9.1)
+    panel("Fuel Decision Gates", etops_summary_items or ["Compare actual fuel to OFP required fuel at each CP."], margin_x, top - 2.36 * inch, col_w, 1.42 * inch, green, light_green, font_size=9.1)
+    panel("ORCA / Diversion Reminders", orca, right_x, top - 2.36 * inch, col_w, 1.42 * inch, red, light_red, font_size=9.1)
+    panel("HF / Oceanic Checks", ["Confirm HF/SatVoice requirements for route segment.", "SELCAL check when required.", "Position reports / CP tracking per clearance.", "Cabin and dispatch coordination before diversion commitment."], margin_x, top - 4.08 * inch, usable_w, 1.06 * inch, blue, light_gray, font_size=9.1)
 
     route_notes = [
         f"{' - '.join(route_points[:12])}",
@@ -2649,10 +2649,10 @@ def render_full_brief_pdf(_text_output: str, pdf_path: Path, title: str, data: B
         panel("Weather / Ride Areas", wx_items[:3] + threat_items(3), right_x, top - 3.50 * inch, col_w, 1.02 * inch, amber, light_amber)
 
     start_page("PAGE 6 - ROUTE NOTES")
-    panel("Route Notes", route_notes, margin_x, top - 0.74 * inch, usable_w, 1.12 * inch, blue, light_blue)
-    panel("Dispatcher Remarks", data.dispatcher_remarks[:8] or ["No dispatcher remarks extracted."], margin_x, top - 2.14 * inch, col_w, 1.36 * inch, amber, light_amber)
-    panel("Aircraft / Dispatch Status", mx_items + ["Verify MEL/CDL, dispatch items, UTO/NEF, EFBs, and cabin writeups before push."], right_x, top - 2.14 * inch, col_w, 1.36 * inch, blue, light_gray)
-    panel("Route Threat Review", threat_items(6), margin_x, top - 3.82 * inch, usable_w, 0.94 * inch, red, light_red)
+    panel("Route Notes", route_notes, margin_x, top - 0.56 * inch, usable_w, 1.34 * inch, blue, light_blue, font_size=9.1)
+    panel("Dispatcher Remarks", data.dispatcher_remarks[:8] or ["No dispatcher remarks extracted."], margin_x, top - 2.18 * inch, col_w, 1.62 * inch, amber, light_amber, font_size=9.1)
+    panel("Aircraft / Dispatch Status", mx_items + ["Verify MEL/CDL, dispatch items, UTO/NEF, EFBs, and cabin writeups before push."], right_x, top - 2.18 * inch, col_w, 1.62 * inch, blue, light_gray, font_size=9.1)
+    panel("Route Threat Review", threat_items(6), margin_x, top - 4.08 * inch, usable_w, 1.04 * inch, red, light_red, font_size=9.1)
 
     system_title, system_number, system_total, system_items, memory_items = build_rotating_review(data)
     jim_items = [
@@ -2684,17 +2684,17 @@ def render_full_brief_pdf(_text_output: str, pdf_path: Path, title: str, data: B
         captain_flow_rows,
         [0.88 * inch, 1.10 * inch, usable_w - 1.98 * inch],
         margin_x,
-        top - 0.74 * inch,
-        2.82 * inch,
-        font_size=6.15,
+        top - 0.56 * inch,
+        3.06 * inch,
+        font_size=6.7,
     )
     review_top = flow_bottom - 0.18 * inch
-    panel(f"System of the Day - {system_title} ({system_number}/{system_total})", system_items[:4], margin_x, review_top, col_w, 0.98 * inch, green, light_green, font_size=6.75)
-    panel("Memory / Limitations Review", memory_items[:4], right_x, review_top, col_w, 0.98 * inch, red, light_red, font_size=6.75)
-    lower_review_top = review_top - 1.20 * inch
-    panel("Captain Technique", jim_items, margin_x, lower_review_top, col_w, 0.88 * inch, blue, light_gray, font_size=6.75)
-    panel("Post-flight Closeout", postflight_items, right_x, lower_review_top, col_w, 0.88 * inch, amber, light_amber, font_size=6.75)
-    panel("Bottom Line", ["Brief in time order, fly the plan, update the plan at decision gates, and capture lessons before they fade.", "Verify all data against official OFP, FMS, ATIS, NOTAMs, and company manuals."], margin_x, lower_review_top - 1.06 * inch, usable_w, 0.56 * inch, amber, light_amber, font_size=6.9)
+    panel(f"System of the Day - {system_title} ({system_number}/{system_total})", system_items[:4], margin_x, review_top, col_w, 1.08 * inch, green, light_green, font_size=7.2)
+    panel("Memory / Limitations Review", memory_items[:4], right_x, review_top, col_w, 1.08 * inch, red, light_red, font_size=7.2)
+    lower_review_top = review_top - 1.30 * inch
+    panel("Captain Technique", jim_items, margin_x, lower_review_top, col_w, 0.98 * inch, blue, light_gray, font_size=7.2)
+    panel("Post-flight Closeout", postflight_items, right_x, lower_review_top, col_w, 0.98 * inch, amber, light_amber, font_size=7.2)
+    panel("Bottom Line", ["Brief in time order, fly the plan, update the plan at decision gates, and capture lessons before they fade.", "Verify all data against official OFP, FMS, ATIS, NOTAMs, and company manuals."], margin_x, lower_review_top - 1.16 * inch, usable_w, 0.66 * inch, amber, light_amber, font_size=7.3)
 
     c.save()
     temp_images.cleanup()
