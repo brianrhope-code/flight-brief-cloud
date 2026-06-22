@@ -178,13 +178,13 @@
 
       <section class="panel resource-panel">
         <div class="resource-head">
-          <h3>Resources</h3>
-          <span class="muted" id="resources-count">No resources loaded yet.</span>
+          <h3>Reference Library</h3>
+          <span class="muted" id="resources-count">Loading reference guide.</span>
         </div>
         <div class="resource-search">
           <section class="field-card">
-            <label for="resource-search-input">Search reference files</label>
-            <input id="resource-search-input" type="text" placeholder="ETOPS, drift down, SFO taxi, SELCAL..." autocomplete="off" />
+            <label for="resource-search-input">Search pilot reference</label>
+            <input id="resource-search-input" type="text" placeholder="ETOPS, drift down, turbulence, dispatch reports..." autocomplete="off" />
           </section>
           <button class="secondary" type="button" id="resource-search-btn">Search</button>
         </div>
@@ -200,15 +200,15 @@
           </section>
           <section class="field-card">
             <label for="resources-note">Use this for manuals, system notes, and quick reference files</label>
-            <input id="resources-note" type="text" value="Choose a folder when supported, or select several files at once." readonly />
+            <input id="resources-note" type="text" value="Phone search uses the built-in guide. Mac can also save extra local resources." readonly />
           </section>
           <div class="resource-actions">
-            <button class="primary" type="button" id="save-resources-btn">Save resources</button>
-            <button class="secondary" type="button" id="refresh-resources-btn">Refresh resources</button>
+            <button class="primary" type="button" id="save-resources-btn">Save local resources</button>
+            <button class="secondary" type="button" id="refresh-resources-btn">Refresh reference</button>
           </div>
         </div>
         <div class="resource-list" id="resource-list">
-          <div class="resource-empty">Add your 777 flight manual, system notes, and any other reference files here.</div>
+          <div class="resource-empty">The built-in pilot reference guide will appear here.</div>
         </div>
       </section>
 
@@ -523,16 +523,16 @@
           return;
         }
         if (!resources || resources.length === 0) {
-          resourcesCount.textContent = "No resources loaded yet.";
-          resourceList.innerHTML = '<div class="resource-empty">Add your 777 flight manual, system notes, and any other reference files here.</div>';
+          resourcesCount.textContent = "No reference guide found.";
+          resourceList.innerHTML = '<div class="resource-empty">No phone reference guide is available yet.</div>';
           return;
         }
 
-        resourcesCount.textContent = `${resources.length} resource file${resources.length === 1 ? "" : "s"} available.`;
+        resourcesCount.textContent = `${resources.length} reference file${resources.length === 1 ? "" : "s"} available.`;
         resourceList.innerHTML = resources
           .map((item) => {
             const sizeKb = item.size ? `${Math.max(1, Math.round(Number(item.size) / 1024))} KB` : "";
-            const meta = [item.display_name || item.name, item.modified, sizeKb].filter(Boolean).join(" • ");
+            const meta = [item.kind, item.display_name || item.name, item.modified, sizeKb].filter(Boolean).join(" • ");
             return `
               <div class="resource-item">
                 <div class="meta">
@@ -563,7 +563,7 @@
             <div class="resource-item">
               <div class="meta">
                 <div class="name">${escapeHtml(item.display_name || item.name)}</div>
-                <div class="sub">${escapeHtml(item.snippet || "Matched file name.")}</div>
+                <div class="sub">${escapeHtml([item.kind, item.snippet || "Matched file name."].filter(Boolean).join(" • "))}</div>
               </div>
               <a class="result-link" href="${escapeHtml(item.url)}" target="_blank" rel="noopener">Open</a>
             </div>
@@ -1017,19 +1017,17 @@
 
       async function loadResources() {
         try {
-          const res = await fetch("/api/resources");
+          const res = await fetch("/api/reference");
           const data = await res.json();
           if (data.ok) {
-            renderResources(data.resources || []);
+            renderResources(data.references || []);
             return;
           }
           renderResources([]);
-          resourcesCount.textContent = data.error || "Could not load resources.";
+          resourcesCount.textContent = data.error || "Could not load reference guide.";
         } catch (error) {
           renderResources([]);
-          resourcesCount.textContent = isHostedPhoneApp()
-            ? "Resources are saved from the desktop app."
-            : `Could not load resources. ${error.message}`;
+          resourcesCount.textContent = `Could not load reference guide. ${error.message}`;
         }
       }
 
@@ -1051,7 +1049,7 @@
         resourceSearchBtn.disabled = true;
         resourceSearchBtn.textContent = "Searching...";
         try {
-          const res = await fetch(`/api/resources/search?q=${encodeURIComponent(query)}`);
+          const res = await fetch(`/api/reference/search?q=${encodeURIComponent(query)}`);
           const data = await res.json();
           if (!data.ok) {
             throw new Error(data.error || "Search failed");
@@ -1060,11 +1058,7 @@
           setLog(`Reference search: ${data.results?.length || 0} result(s) for "${query}".`);
         } catch (error) {
           renderResourceSearchResults([], query);
-          setLog(
-            isHostedPhoneApp()
-              ? "Reference search works in the desktop app after resources are uploaded there."
-              : `Reference search failed.\n${error.message}`
-          );
+          setLog(`Reference search failed.\n${error.message}`);
         } finally {
           resourceSearchBtn.disabled = false;
           resourceSearchBtn.textContent = "Search";

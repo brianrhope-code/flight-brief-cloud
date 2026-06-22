@@ -362,6 +362,15 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/resources/download":
             self.handle_resource_download(parsed.query)
             return
+        if parsed.path == "/api/reference":
+            self.handle_reference_list()
+            return
+        if parsed.path == "/api/reference/search":
+            self.handle_reference_search(parsed.query)
+            return
+        if parsed.path == "/api/reference/download":
+            self.handle_reference_download(parsed.query)
+            return
         if parsed.path == "/api/timeline":
             self.handle_timeline()
             return
@@ -1768,6 +1777,107 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not candidate.exists() or not candidate.is_file():
             self.respond_json({"ok": False, "error": "Resource not found"}, status=HTTPStatus.NOT_FOUND)
+            return
+        mime, _ = mimetypes.guess_type(candidate.name)
+        content = candidate.read_bytes()
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", mime or "application/octet-stream")
+        self.send_header("Content-Disposition", f'inline; filename=\"{candidate.name}\"')
+        self.send_header("Content-Length", str(len(content)))
+        self.end_headers()
+        self.wfile.write(content)
+
+    def list_reference_files(self) -> list[dict[str, str]]:
+        records: list[dict[str, str]] = []
+        allowed_suffixes = {".pdf", ".txt", ".md", ".docx"}
+        if REFERENCE_DIR.exists():
+            for path in sorted(REFERENCE_DIR.rglob("*")):
+                if not path.is_file() or path.suffix.lower() not in allowed_suffixes:
+                    continue
+                relative = path.relative_to(REFERENCE_DIR)
+                records.append(
+                    {
+                        "name": path.name,
+                        "display_name": str(relative),
+                        "path": str(path),
+                        "url": f"/api/reference/download?path={self.url_escape(str(relative))}",
+                        "size": str(path.stat().st_size),
+                        "modified": datetime.fromtimestamp(path.stat().st_mtime).isoformat(timespec="minutes"),
+                        "kind": "phone guide" if path.name == "FUTURE_BRIEF_REFERENCE_SUMMARY.md" else "reference",
+                    }
+                )
+        for item in self.list_resources():
+            item["kind"] = "saved resource"
+            records.append(item)
+        return records
+
+    def handle_reference_list(self) -> None:
+        references = self.list_reference_files()
+        self.respond_json(
+            {
+                "ok": True,
+                "references": references,
+                "reference_dir": str(REFERENCE_DIR),
+                "phone_ready": any(item["name"] == "FUTURE_BRIEF_REFERENCE_SUMMARY.md" for item in references),
+            }
+        )
+
+    def search_reference_files(self, query: str) -> list[dict[str, str]]:
+        query = normalize_space(query)
+        if not query or not REFERENCE_DIR.exists():
+            return []
+
+        results: list[dict[str, str]] = []
+        for item in self.list_reference_files():
+            path = Path(item["path"])
+            display_name = item["display_name"]
+            text = ""
+            haystack = display_name
+            if query.lower() not in haystack.lower():
+                if path.suffix.lower() == ".pdf":
+                    continue
+                text = self.extract_resource_text(path)
+                haystack = f"{display_name}\n{text}"
+            if query.lower() not in haystack.lower():
+                continue
+            if not text and path.suffix.lower() != ".pdf":
+                text = self.extract_resource_text(path)
+            results.append(
+                {
+                    "name": item["name"],
+                    "display_name": display_name,
+                    "url": item["url"],
+                    "snippet": self.search_snippet(text or display_name, query, radius=180),
+                    "modified": item.get("modified", ""),
+                    "kind": item.get("kind", "reference"),
+                }
+            )
+            if len(results) >= 30:
+                break
+        return results
+
+    def handle_reference_search(self, query: str) -> None:
+        params = parse_qs(query)
+        search_text = (params.get("q", [""])[0] or "").strip()
+        if not search_text:
+            self.respond_json({"ok": True, "query": "", "results": []})
+            return
+        self.respond_json({"ok": True, "query": search_text, "results": self.search_reference_files(search_text)})
+
+    def handle_reference_download(self, query: str) -> None:
+        params = parse_qs(query)
+        rel = (params.get("path", [""])[0] or "").strip()
+        if not rel:
+            self.respond_json({"ok": False, "error": "Missing reference path"}, status=HTTPStatus.BAD_REQUEST)
+            return
+        candidate = REFERENCE_DIR / Path(rel)
+        try:
+            candidate.resolve().relative_to(REFERENCE_DIR.resolve())
+        except Exception:
+            self.respond_json({"ok": False, "error": "Invalid reference path"}, status=HTTPStatus.BAD_REQUEST)
+            return
+        if not candidate.exists() or not candidate.is_file():
+            self.respond_json({"ok": False, "error": "Reference not found"}, status=HTTPStatus.NOT_FOUND)
             return
         mime, _ = mimetypes.guess_type(candidate.name)
         content = candidate.read_bytes()
