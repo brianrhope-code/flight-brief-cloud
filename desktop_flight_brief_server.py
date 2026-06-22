@@ -1000,9 +1000,9 @@ class Handler(BaseHTTPRequestHandler):
 
         def draw_route_map(rect: tuple[int, int, int, int], weather: bool = False, title: str | None = None) -> None:
             x, y, x2, y2 = rect
-            draw.rounded_rectangle(rect, radius=12, fill=ocean, outline=(188, 207, 222), width=1)
-            draw.polygon([(x - 20, y2), (x + 105, y + 42), (x + 174, y2)], fill=(217, 236, 218))
-            draw.polygon([(x2 + 24, y2), (x2 - 112, y + 34), (x2 - 202, y2)], fill=(217, 236, 218))
+            draw.rounded_rectangle(rect, radius=12, fill=light_amber, outline=(236, 211, 166), width=1)
+            draw.polygon([(x - 20, y2), (x + 105, y + 42), (x + 174, y2)], fill=(226, 237, 219))
+            draw.polygon([(x2 + 24, y2), (x2 - 112, y + 34), (x2 - 202, y2)], fill=(226, 237, 219))
             pts = route_points()
             path = route_path(rect, len(pts))
             if weather:
@@ -1159,7 +1159,12 @@ class Handler(BaseHTTPRequestHandler):
             seed_text = "|".join(str(record.get(key, "")) for key in ("flight", "date_code", "route", "release"))
             index = int(hashlib.sha256(seed_text.encode("utf-8")).hexdigest()[:8], 16) % len(titles)
             title = titles[index]
-            return f"{title} ({index + 1}/{len(titles)})", prompts.get(title, [])
+            reference_prompts = [
+                "Reference: 777 systems guide / memory review",
+                f"Trip tie-in: {(get_list('flight_analysis') or ['connect to route, weather, ETOPS, fuel, or arrival threat'])[0]}",
+            ]
+            reference_prompts.extend(prompts.get(title, []))
+            return f"{title} ({index + 1}/{len(titles)})", reference_prompts[:4]
 
         W, H = 3600, 2200
         sheet = Image.new("RGB", (W, H), page_bg)
@@ -1218,15 +1223,18 @@ class Handler(BaseHTTPRequestHandler):
         if source_text:
             draw_wrapped(source_text, x + 12, y + 88, x2 - x - 24, font_tiny, muted, max_lines=2)
         crew_top = y + 136
-        crew_bottom = min(y2, crew_top + 150)
+        crew_bottom = min(y2, crew_top + 190)
         draw.rounded_rectangle((x, crew_top, x2, crew_bottom), radius=12, fill=(247, 250, 253), outline=(220, 229, 237))
         draw.text((x + 12, crew_top + 14), "Crew / Pairing", fill=blue, font=font_h2)
-        crew_lines = [
-            f"CA {record.get('captain') or '--'}",
-            f"FO {record.get('first_officer') or '--'}",
-            f"Purser {record.get('purser') or '--'}",
-            f"Pickup {record.get('pickup_time') or '--'}  Report {record.get('report_time') or '--'}",
-        ]
+        pilots = get_list("pilots")
+        if not pilots:
+            pilots = [item for item in [f"CA {record.get('captain') or ''}".strip(), f"FO {record.get('first_officer') or ''}".strip()] if len(item) > 3]
+            pilots.extend(f"Relief {name}" for name in get_list("iros"))
+        crew_lines = [f"Pilot {idx}: {pilot}" for idx, pilot in enumerate(pilots[:4], start=1)]
+        if not crew_lines:
+            crew_lines = ["Pilots: --"]
+        if record.get("purser"):
+            crew_lines.append(f"Purser {record.get('purser')}")
         cy = crew_top + 48
         for line in crew_lines:
             if cy + 24 > crew_bottom:

@@ -1474,13 +1474,47 @@ def build_rotating_review(data: BriefData) -> tuple[str, int, int, list[str], li
     seed = review_seed(data)
     system_index = review_system_index(data)
     system = SYSTEM_REVIEW_BANK[system_index]
-    system_items = [format_review_item(item, data) for item in system["items"]]
+    system_items = [
+        "Reference: 777 systems study guide / memory review bank; verify details against the current flight manual.",
+        f"Trip tie-in: {data.flight_analysis[0]}" if data.flight_analysis else "Trip tie-in: connect this system to today's route, weather, ETOPS, fuel, or arrival threat.",
+    ]
+    system_items.extend(format_review_item(item, data) for item in system["items"])
     memory_items = rotate_list(MEMORY_REVIEW_BANK, seed // max(1, len(SYSTEM_REVIEW_BANK)), 4)
     return str(system["title"]), system_index + 1, len(SYSTEM_REVIEW_BANK), system_items[:4], memory_items
 
 
 def parse_csv_people(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+PILOT_ROLE_PREFIXES = ("CA", "FO", "FB", "FC", "FE", "FP", "RP", "RO")
+
+
+def is_pilot_role(role: str) -> bool:
+    return role.upper().startswith(PILOT_ROLE_PREFIXES)
+
+
+def pilot_crew_members(data: BriefData) -> list[dict[str, str]]:
+    return [member for member in data.crew_members if is_pilot_role(member.get("role", ""))]
+
+
+def pilot_display_items(data: BriefData) -> list[str]:
+    if data.crew_members:
+        items = []
+        for member in pilot_crew_members(data):
+            role = member.get("role", "").upper() or "Pilot"
+            name = member.get("name", "")
+            if name:
+                items.append(f"{role} {name}")
+        if items:
+            return items
+    items = []
+    if data.captain:
+        items.append(f"CA {data.captain}")
+    if data.first_officer:
+        items.append(f"FO {data.first_officer}")
+    items.extend(f"Relief {name}" for name in data.iros)
+    return items
 
 
 def compact_flight(value: str) -> str:
@@ -1514,7 +1548,7 @@ def parse_pairing_crew(pairing_pdf: Path, flight: str, pairing_id: str = "") -> 
         block,
     ):
         clean_name = normalize_space(name)
-        if pairing_id and role in {"CA01", "FO01"} and source_pairing.upper() != pairing_id.upper():
+        if pairing_id and is_pilot_role(role) and source_pairing.upper() != pairing_id.upper():
             continue
         members.append(
             {
@@ -1601,6 +1635,13 @@ def apply_pairing_crew(data: BriefData, pairing_pdf: Path) -> None:
         data.captain = next(iter(names_for("CA")), "")
     if not data.first_officer:
         data.first_officer = next(iter(names_for("FO")), "")
+    if not data.iros:
+        primary_names = {name for name in (data.captain, data.first_officer) if name}
+        data.iros = [
+            member.get("name", "")
+            for member in pilot_crew_members(data)
+            if member.get("name") and member.get("name") not in primary_names
+        ]
     if not data.purser:
         data.purser = next(iter(names_for("FM")), "")
     if not data.flight_attendants:
@@ -1683,21 +1724,20 @@ def airport_10_7_notes(text: str, airport: str, limit: int = 6) -> list[str]:
 def crew_table_rows(data: BriefData) -> list[list[str]]:
     rows = [["Position", "Name", "Emp #", "Role", "Source"]]
     if data.crew_members:
-        used_ids: set[str] = set()
-        for role_prefix, position in [("CA", "CA"), ("FO", "FO"), ("FM", "FM")]:
-            member = next((item for item in data.crew_members if item.get("role", "").startswith(role_prefix)), None)
-            if not member:
-                continue
-            used_ids.add(member.get("employee_id", ""))
+        for member in pilot_crew_members(data):
+            role = member.get("role", "--")
             rows.append(
                 [
-                    position,
+                    role[:2] or "Pilot",
                     member.get("name", "--"),
                     member.get("employee_id", "--"),
-                    member.get("role", "--"),
+                    role,
                     "Pairing PDF",
                 ]
             )
+        member = next((item for item in data.crew_members if item.get("role", "").startswith("FM")), None)
+        if member:
+            rows.append(["FM", member.get("name", "--"), member.get("employee_id", "--"), member.get("role", "--"), "Pairing PDF"])
         fa_members = [member for member in data.crew_members if member.get("role", "").startswith("FA")]
         if fa_members:
             rows.append(
@@ -1744,12 +1784,9 @@ def render_text(data: BriefData) -> str:
             lines.append(f"- Trip ID {data.trip_id}")
         if data.pairing_note:
             lines.append(f"- {data.pairing_note}")
-        if data.captain:
-            lines.append(f"- Captain {data.captain}")
-        if data.first_officer:
-            lines.append(f"- First Officer {data.first_officer}")
-        if data.iros:
-            lines.append(f"- IRO {', '.join(data.iros)}")
+        pilots = pilot_display_items(data)
+        if pilots:
+            lines.append(f"- Pilots: {'; '.join(pilots)}")
         if data.purser:
             lines.append(f"- Purser {data.purser}")
         if data.flight_attendants:
@@ -1776,6 +1813,11 @@ def render_text(data: BriefData) -> str:
     if data.trip_kit_analysis:
         lines.extend(["", "Trip Kit Watch Items"])
         lines.extend(f"- {item}" for item in data.trip_kit_analysis)
+    system_title, system_number, system_total, system_items, memory_items = build_rotating_review(data)
+    lines.extend(["", f"System Review - {system_title} ({system_number}/{system_total})"])
+    lines.extend(f"- {item}" for item in system_items)
+    lines.extend(["", "Memory / Limitations Review"])
+    lines.extend(f"- {item}" for item in memory_items)
     lines.extend(
         [
             "",
@@ -2131,12 +2173,9 @@ def render_pdf(_text_output: str, pdf_path: Path, title: str, data: BriefData) -
     crew_items = []
     if data.trip_id:
         crew_items.append(f"Trip {data.trip_id}")
-    if data.captain:
-        crew_items.append(f"CA: {data.captain}")
-    if data.first_officer:
-        crew_items.append(f"FO: {data.first_officer}")
-    if data.iros:
-        crew_items.append(f"IRO: {', '.join(data.iros)}")
+    pilots = pilot_display_items(data)
+    if pilots:
+        crew_items.append("Pilots: " + "; ".join(pilots))
     if data.purser:
         crew_items.append(f"FM01: {data.purser}")
     if data.flight_attendants:
@@ -2448,7 +2487,7 @@ def render_full_brief_pdf(_text_output: str, pdf_path: Path, title: str, data: B
         c.setFont("Helvetica-Bold", 9.1)
         c.drawString(x, y_top - 2, title_text.upper())
         y_box_top = y_top - 12
-        c.setFillColor(light_blue)
+        c.setFillColor(light_amber)
         c.setStrokeColor(grid)
         c.setLineWidth(0.45)
         c.rect(x, y_box_top - h, w, h, stroke=1, fill=1)
@@ -2507,6 +2546,9 @@ def render_full_brief_pdf(_text_output: str, pdf_path: Path, title: str, data: B
     crew_summary_items = []
     if data.trip_id:
         crew_summary_items.append(f"Trip ID: {data.trip_id}")
+    pilots = pilot_display_items(data)
+    if pilots:
+        crew_summary_items.append("Pilots: " + "; ".join(pilots))
     crew_summary_items.extend(
         [
             f"CA: {data.captain or 'not entered'}",
@@ -2793,6 +2835,7 @@ def update_catalog(data: BriefData, source_pdf: Path, txt_path: Path, pdf_path: 
         "captain": data.captain,
         "first_officer": data.first_officer,
         "iros": data.iros,
+        "pilots": pilot_display_items(data),
         "purser": data.purser,
         "flight_attendants": data.flight_attendants,
         "route": data.route,
