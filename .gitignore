@@ -7,4 +7,8 @@ output/
 uploads/
 resources/
 flight-brief-app/briefs/current/
+flight-brief-app/briefs/*.pdf
+flight-brief-app/briefs/*.txt
+Reference/*
+!Reference/FUTURE_BRIEF_REFERENCE_SUMMARY.md
 *.log

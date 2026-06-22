@@ -38,10 +38,12 @@ CHUNK_DIR = OUTPUT_DIR / "upload_chunks"
 RESOURCE_DIR = OUTPUT_DIR / "resources"
 LATEST_RESULT_FALLBACK_PATH = Path("/tmp/flight-brief-latest-result.json")
 ACTIVE_UPLOADS_PATH = OUTPUT_DIR / "active_uploads.json"
+LOCAL_REFERENCE_DIR = Path(__file__).with_name("Reference")
+LEGACY_REFERENCE_DIR = Path("/Users/brianhope/Desktop/Flight Plan/Gold Standard Pilot Brief")
 REFERENCE_DIR = Path(
-    os.environ.get("FLIGHT_BRIEF_REFERENCE_DIR", "/Users/brianhope/Desktop/Flight Plan/Gold Standard Pilot Brief")
+    os.environ.get("FLIGHT_BRIEF_REFERENCE_DIR", str(LOCAL_REFERENCE_DIR if LOCAL_REFERENCE_DIR.exists() else LEGACY_REFERENCE_DIR))
 ).expanduser()
-SENIORITY_SOURCE_PDF = REFERENCE_DIR / "Contract and Bidding" / "Category Summary June 2026.pdf"
+SENIORITY_SOURCE_PDF = REFERENCE_DIR / "Company" / "Category Summary June 2026.pdf"
 PHONE_PROJECT_NAME = "flight-briefs-brian-hope"
 PHONE_APP_URL = "https://flight-briefs-brian-hope-c6t.pages.dev/"
 CLOUD_MODE = os.environ.get("FLIGHT_BRIEF_CLOUD_MODE", "").lower() in {"1", "true", "yes"}
@@ -1778,12 +1780,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def read_reference_inventory(self) -> dict:
         categories = {
-            "gold_standard_examples": [REFERENCE_DIR / "UA200_GUM-HNL_Gold_Standard_Brief_v3_4.pdf"],
+            "brief_reference_summary": [REFERENCE_DIR / "FUTURE_BRIEF_REFERENCE_SUMMARY.md"],
             "seniority": [SENIORITY_SOURCE_PDF],
             "briefings": sorted((REFERENCE_DIR / "Briefings").glob("*")) if (REFERENCE_DIR / "Briefings").exists() else [],
-            "training": sorted((REFERENCE_DIR / "777 ALL Training Notes").glob("*")) if (REFERENCE_DIR / "777 ALL Training Notes").exists() else [],
-            "routes": sorted((REFERENCE_DIR / "UA Routes").glob("*")) if (REFERENCE_DIR / "UA Routes").exists() else [],
-            "contract_and_bidding": sorted((REFERENCE_DIR / "Contract and Bidding").glob("*")) if (REFERENCE_DIR / "Contract and Bidding").exists() else [],
+            "aircraft_777": sorted((REFERENCE_DIR / "777").glob("*")) if (REFERENCE_DIR / "777").exists() else [],
+            "company": sorted((REFERENCE_DIR / "Company").glob("*")) if (REFERENCE_DIR / "Company").exists() else [],
             "root": sorted(REFERENCE_DIR.glob("*")) if REFERENCE_DIR.exists() else [],
         }
         allowed_suffixes = {".pdf", ".txt", ".md", ".docx"}

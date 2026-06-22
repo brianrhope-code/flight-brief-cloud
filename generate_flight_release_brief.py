@@ -205,17 +205,20 @@ MEMORY_REVIEW_BANK = [
 ]
 AIRPORT_NOTES_PATH = Path(__file__).with_name("airport-reference-library") / "airport_briefing_notes.json"
 FLIGHT_OVERRIDES_PATH = Path(__file__).with_name("airport-reference-library") / "flight_brief_overrides.json"
+LOCAL_REFERENCE_DIR = Path(__file__).with_name("Reference")
+LEGACY_REFERENCE_DIR = Path("/Users/brianhope/Desktop/Flight Plan/Gold Standard Pilot Brief")
 GOLD_STANDARD_REFERENCE_DIR = Path(
     os.environ.get(
         "FLIGHT_BRIEF_REFERENCE_DIR",
-        "/Users/brianhope/Desktop/Flight Plan/Gold Standard Pilot Brief",
+        str(LOCAL_REFERENCE_DIR if LOCAL_REFERENCE_DIR.exists() else LEGACY_REFERENCE_DIR),
     )
 )
+REFERENCE_SUMMARY_PATH = GOLD_STANDARD_REFERENCE_DIR / "FUTURE_BRIEF_REFERENCE_SUMMARY.md"
 GOLD_STANDARD_EXAMPLE_PDF = GOLD_STANDARD_REFERENCE_DIR / "UA200_GUM-HNL_Gold_Standard_Brief_v3_4.pdf"
 REFERENCE_BRIEFINGS_DIR = GOLD_STANDARD_REFERENCE_DIR / "Briefings"
-REFERENCE_TRAINING_DIR = GOLD_STANDARD_REFERENCE_DIR / "777 ALL Training Notes"
+REFERENCE_TRAINING_DIR = GOLD_STANDARD_REFERENCE_DIR / "777"
 REFERENCE_ROUTES_DIR = GOLD_STANDARD_REFERENCE_DIR / "UA Routes"
-REFERENCE_CONTRACT_DIR = GOLD_STANDARD_REFERENCE_DIR / "Contract and Bidding"
+REFERENCE_CONTRACT_DIR = GOLD_STANDARD_REFERENCE_DIR / "Company"
 SENIORITY_SOURCE_PDF = REFERENCE_CONTRACT_DIR / "Category Summary June 2026.pdf"
 INTEGRATED_SENIORITY_SOURCE_PDF = REFERENCE_CONTRACT_DIR / "Integrated Seniority List.pdf"
 SENIORITY_CACHE_PATH = GOLD_STANDARD_REFERENCE_DIR / "seniority_cache.json"
@@ -1045,6 +1048,58 @@ def is_sfo_departure(data: BriefData) -> bool:
     return (data.departure_icao or "").upper() == "KSFO" or (data.departure or "").upper() == "SFO"
 
 
+def load_reference_summary_text() -> str:
+    try:
+        if REFERENCE_SUMMARY_PATH.exists():
+            return REFERENCE_SUMMARY_PATH.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return ""
+    return ""
+
+
+def reference_summary_is_active() -> bool:
+    return bool(load_reference_summary_text().strip())
+
+
+def reference_briefing_focus_items() -> list[str]:
+    if not reference_summary_is_active():
+        return []
+    return [
+        "Reference guide active: use FA, Captain, PF, Arrival, Relief, dispatch-report, turbulence, ETOPS/oceanic, and 777 review flows.",
+        "Keep reference inserts short: apply the highest-value reminders from the guide to the actual OFP/trip-kit threats.",
+    ]
+
+
+def reference_required_dispatch_reports() -> list[str]:
+    if not reference_summary_is_active():
+        return []
+    return [
+        "Dispatch report triggers: >15 min flight-time increase, +/-5 min from reported ETA, 4000 ft cruise-altitude change, >100 NM lateral deviation.",
+        "Also report: fuel quantity indicator failure, all contingency fuel used, significantly different weather or MDT/SVR turbulence, holding, sustained anti-ice/deice, or CDR assignment.",
+    ]
+
+
+def reference_turbulence_actions(data: BriefData) -> list[str]:
+    if not reference_summary_is_active():
+        return []
+    turbulence = " ".join(data.threats + data.dispatcher_remarks).upper()
+    if "TURB" not in turbulence:
+        return []
+    return [
+        "Reference turbulence guide: forecast/impending moderate or greater - PA 'Flight attendants take your jumpseats.'",
+        "Unexpected moderate or greater - PA 'Flight attendants be seated immediately, be seated immediately.' Resume only after cabin check-in.",
+    ]
+
+
+def reference_777_review_items() -> list[str]:
+    if not reference_summary_is_active():
+        return []
+    return [
+        "Reference guide: rotate one 777 system and one limitation/memory reminder each trip.",
+        "Tie the system review to trip threats when possible: fuel for long-haul, anti-ice for winter, communications/navigation for oceanic, hydraulics/flight controls for abnormal planning.",
+    ]
+
+
 def build_fa_discussion_points(data: BriefData) -> list[str]:
     flight_time = f"{data.block} block" if data.block else "Block not extracted"
     weather = data.weather_threats[0] if data.weather_threats else "Arrival weather is the main watch item"
@@ -1053,7 +1108,7 @@ def build_fa_discussion_points(data: BriefData) -> list[str]:
     cabin_items = summarize_aircraft_status(data)
     time_to_landing = data.eta_local_time or data.eta or "ETA not extracted"
 
-    return [
+    items = [
         "Threat Lens: personal, environmental, technical; verify any riders onboard.",
         f"Time / Arrival: {flight_time}; planned arrival {time_to_landing}.",
         f"Ride Timing: {ride_timing}",
@@ -1062,6 +1117,8 @@ def build_fa_discussion_points(data: BriefData) -> list[str]:
         f"T.E.S.T.: Type of Emergency, Evacuation, Special Instructions, Time To Landing {time_to_landing}.",
         f"Dispatch Sector: {data.dispatch_sector or 'not shown in release; verify with dispatch if needed'}.",
     ]
+    items.extend(reference_turbulence_actions(data))
+    return items
 
 
 def build_captain_discussion_points(data: BriefData) -> list[str]:
@@ -1076,6 +1133,7 @@ def build_captain_discussion_points(data: BriefData) -> list[str]:
 
     items = [
         f"Threat Lens / Duties: personal, environmental, technical; confirm PF/PM and relief roles; release {data.release_number or 'N/A'} for {data.flight or 'flight'} {data.route or ''}.".strip(),
+        *(["Reference flow: release verification, fuel plan, maintenance, NOTAMs, taxi/hot spots, RTO/evacuation, and air return/takeoff alternate."] if reference_summary_is_active() else []),
         f"Fuel / Alternate: Min T/O {data.minimum_takeoff_fuel or 'N/A'}, T/O {data.takeoff_fuel or 'N/A'}, LDG {data.landing_fuel or 'N/A'}, FAR {data.far_reserve_fuel or 'N/A'}, conservative {data.conservative_fuel or 'N/A'}, alt {data.dispatch_alternate or 'N/A'}.",
         f"Departure / Arrival Procedures: RWY {data.departure_runway or 'verify'} SID {data.departure_sid or 'verify'} | STAR {data.arrival_star or 'not shown'} RWY {data.arrival_runway or 'verify with ATIS'}.",
         f"Mx / Pubs: {mx_status}; verify EFB, PEDs, and current pubs.",
@@ -1095,6 +1153,7 @@ def build_pilot_flying_points(data: BriefData) -> list[str]:
     convective = next((item for item in data.threats if "CB" in item.upper() or "TS" in item.upper()), "No convective note auto-detected")
     items = [
         "Threat Lens: personal, environmental, technical.",
+        *(["Reference PF flow: clearance, departure review, terrain/obstacles, transition altitude, weather/windshear, takeoff data, engine-failure profile, and automation modes."] if reference_summary_is_active() else []),
         f"Departure / Taxi: {taxi_plan}.",
         f"Weather / Climb: {turbulence}; {convective}.",
         f"T/O Data / Profile: verify planned takeoff data, takeoff and engine-failure profile; first step {first_step}.",
@@ -1117,6 +1176,7 @@ def build_arrival_brief_points(data: BriefData) -> list[str]:
     )
     items = [
         "Threat Lens: personal, environmental, technical.",
+        *(["Reference arrival flow: FMC, ATIS, NOTAMs/MEL, landing performance, runway condition, terrain, go-around, windshear/PWS, exit/taxi/hot spots."] if reference_summary_is_active() else []),
         f"ATIS / Weather / Fuel: {weather}; planned landing {data.landing_fuel or 'N/A'}.",
         f"Arrival / Runway / Taxi: STAR {data.arrival_star or 'not shown'}; runway {data.arrival_runway or 'verify with ATIS'}; {dest_note}.",
         f"Stabilized Approach: {FM_STABILIZED_APPROACH}",
@@ -1794,6 +1854,13 @@ def render_text(data: BriefData) -> str:
     if data.arrival_brief_points:
         lines.extend(["", "Arrival Brief Discussion Points"])
         lines.extend(f"- {item}" for item in data.arrival_brief_points)
+
+    reference_items = reference_briefing_focus_items()
+    if reference_items:
+        lines.extend(["", "Reference Guide Applied"])
+        lines.extend(f"- {item}" for item in reference_items)
+        lines.extend(f"- {item}" for item in reference_required_dispatch_reports())
+        lines.extend(f"- {item}" for item in reference_777_review_items())
 
     if data.passenger_pa_notes:
         lines.extend(["", "Passenger PA Notes"])
@@ -2586,7 +2653,12 @@ def render_full_brief_pdf(_text_output: str, pdf_path: Path, title: str, data: B
     )
     lower_panel_top = timeline_bottom - 0.18 * inch
     panel("ORCA Action Guide", orca[:3], margin_x, lower_panel_top, col_w, 0.76 * inch, red, light_red, font_size=6.95)
-    panel("Dispatcher / ETOPS Notes", (data.dispatcher_remarks[:3] + build_pdf_etops_items(data)[:2]) or ["No dispatcher remarks extracted."], right_x, lower_panel_top, col_w, 0.76 * inch, amber, light_amber, font_size=6.95)
+    dispatch_reference_items = (
+        data.dispatcher_remarks[:2]
+        + build_pdf_etops_items(data)[:1]
+        + reference_required_dispatch_reports()[:2]
+    )
+    panel("Dispatcher / ETOPS Notes", dispatch_reference_items or ["No dispatcher remarks extracted."], right_x, lower_panel_top, col_w, 0.88 * inch, amber, light_amber, font_size=6.35)
     panel("ETOPS Driftdown / Offset Reminder", ETOPS_DRIFTDOWN_OFFSET, margin_x, lower_panel_top - 1.15 * inch, usable_w, 1.02 * inch, red, light_red, font_size=6.25)
 
     start_page("PAGE 4 - ARRIVAL PLAN")
@@ -2694,7 +2766,13 @@ def render_full_brief_pdf(_text_output: str, pdf_path: Path, title: str, data: B
     lower_review_top = review_top - 1.30 * inch
     panel("Captain Technique", jim_items, margin_x, lower_review_top, col_w, 0.98 * inch, blue, light_gray, font_size=7.2)
     panel("Post-flight Closeout", postflight_items, right_x, lower_review_top, col_w, 0.98 * inch, amber, light_amber, font_size=7.2)
-    panel("Bottom Line", ["Brief in time order, fly the plan, update the plan at decision gates, and capture lessons before they fade.", "Verify all data against official OFP, FMS, ATIS, NOTAMs, and company manuals."], margin_x, lower_review_top - 1.16 * inch, usable_w, 0.66 * inch, amber, light_amber, font_size=7.3)
+    bottom_line_items = [
+        "Brief in time order, fly the plan, update the plan at decision gates, and capture lessons before they fade.",
+        "Verify all data against official OFP, FMS, ATIS, NOTAMs, and company manuals.",
+    ]
+    bottom_line_items.extend(reference_briefing_focus_items()[:1])
+    bottom_line_items.extend(reference_777_review_items()[:1])
+    panel("Bottom Line", bottom_line_items, margin_x, lower_review_top - 1.16 * inch, usable_w, 0.78 * inch, amber, light_amber, font_size=7.1)
 
     c.save()
     temp_images.cleanup()
