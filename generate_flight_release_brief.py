@@ -219,9 +219,6 @@ REFERENCE_BRIEFINGS_DIR = GOLD_STANDARD_REFERENCE_DIR / "Briefings"
 REFERENCE_TRAINING_DIR = GOLD_STANDARD_REFERENCE_DIR / "777"
 REFERENCE_ROUTES_DIR = GOLD_STANDARD_REFERENCE_DIR / "UA Routes"
 REFERENCE_CONTRACT_DIR = GOLD_STANDARD_REFERENCE_DIR / "Company"
-SENIORITY_SOURCE_PDF = REFERENCE_CONTRACT_DIR / "Category Summary June 2026.pdf"
-INTEGRATED_SENIORITY_SOURCE_PDF = REFERENCE_CONTRACT_DIR / "Integrated Seniority List.pdf"
-SENIORITY_CACHE_PATH = GOLD_STANDARD_REFERENCE_DIR / "seniority_cache.json"
 APP_HOME_URL = "https://flight-briefs-brian-hope.pages.dev"
 
 
@@ -295,6 +292,9 @@ class BriefData:
     arrival_brief_points: list[str] = field(default_factory=list)
     passenger_pa_notes: list[str] = field(default_factory=list)
     crew_members: list[dict[str, str]] = field(default_factory=list)
+    source_findings: list[str] = field(default_factory=list)
+    flight_analysis: list[str] = field(default_factory=list)
+    trip_kit_analysis: list[str] = field(default_factory=list)
 
 
 def normalize_space(value: str) -> str:
@@ -397,6 +397,96 @@ def parse_threats_from_remarks(remarks: list[str]) -> list[str]:
         if "CB" in upper or "TS" in upper:
             threats.append(remark)
     return threats
+
+
+def value_present(value: str) -> bool:
+    return bool(normalize_space(value)) and normalize_space(value).upper() not in {"N/A", "--", "VERIFY", "NOT SHOWN"}
+
+
+def first_matching(items: list[str], *needles: str) -> str:
+    upper_needles = [needle.upper() for needle in needles]
+    for item in items:
+        upper = item.upper()
+        if any(needle in upper for needle in upper_needles):
+            return item
+    return ""
+
+
+def sentence_fragment(value: str) -> str:
+    return normalize_space(value).rstrip(".;")
+
+
+def build_source_findings(data: BriefData) -> list[str]:
+    findings: list[str] = []
+    release_fields = [
+        data.flight,
+        data.route,
+        data.aircraft_reg,
+        data.release_number,
+        data.out_time,
+        data.eta,
+        data.block,
+        data.takeoff_fuel,
+        data.landing_fuel,
+        data.departure_runway,
+        data.arrival_runway,
+    ]
+    found_release = sum(1 for item in release_fields if value_present(item))
+    findings.append(f"Flight plan parsed: {found_release}/{len(release_fields)} core fields found.")
+    if data.dispatcher_remarks:
+        findings.append(f"Dispatcher remarks parsed: {len(data.dispatcher_remarks)} item(s), including {data.dispatcher_remarks[0]}.")
+    if data.departure_notes or data.destination_notes:
+        findings.append(f"Trip kit / NOTAM data parsed: {len(data.departure_notes)} departure item(s), {len(data.destination_notes)} arrival item(s).")
+    else:
+        findings.append("Trip kit / NOTAM data: no operational snippets were extracted from the uploaded documents.")
+    if data.crew_members:
+        findings.append(f"Pairing parsed: {len(data.crew_members)} crew member(s), trip {data.trip_id or 'not extracted'}.")
+    else:
+        findings.append("Pairing parsed: no crew list found; check that the pairing PDF matches this flight.")
+    return findings
+
+
+def build_flight_analysis(data: BriefData) -> list[str]:
+    items: list[str] = []
+    turbulence = first_matching(data.threats + data.dispatcher_remarks, "TURB")
+    if turbulence:
+        items.append(f"Ride strategy: release calls {turbulence}; brief FA seatbelt timing and keep descent/arrival PA flexible.")
+    lower_altitude = first_matching(data.dispatcher_remarks, "LOWER ATC", "CROSSING ALT")
+    if lower_altitude:
+        items.append(f"Fuel/altitude watch: dispatcher note says {lower_altitude}; compare actual crossing altitude and fuel at CPs.")
+    crossing = first_matching(data.dispatcher_remarks, "R465", "C TRK", "TRACK")
+    if crossing:
+        items.append(f"Oceanic/route watch: {crossing}; verify clearance, FMS route, CP timing, and contingency offset/driftdown plan.")
+    departure_notam = data.departure_notes[0] if data.departure_notes else ""
+    if departure_notam:
+        items.append(f"Departure ground threat: {departure_notam}; brief taxi routing before brake release.")
+    if data.departure_runway and any("PAPI" in note.upper() or "ALS" in note.upper() or "ID LGT" in note.upper() for note in data.departure_notes[:8]):
+        items.append(f"Runway aid note: {data.departure_icao or data.departure} RWY {data.departure_runway} has lighting/visual-aid NOTAMs in the package; verify performance and low-vis assumptions.")
+    destination_notam = data.destination_notes[0] if data.destination_notes else ""
+    if destination_notam:
+        items.append(f"Arrival airport watch: {destination_notam}; review taxi/landing runway plan with ATIS.")
+    if data.etops_cp_details:
+        items.append(f"ETOPS decision point: {data.etops_cp_details[0]}; use actual fuel/altitude trend before committing beyond CP.")
+    if data.dispatch_alternate and data.far_reserve_fuel:
+        items.append(f"Diversion picture: alternate {data.dispatch_alternate}, FAR/alternate reserve {data.far_reserve_fuel}; keep arrival fuel trend visible.")
+    if data.aircraft_notes:
+        items.append(f"Aircraft status from release: {summarize_aircraft_status(data)}.")
+    return dedupe_preserve_order(items)[:8]
+
+
+def build_trip_kit_analysis(data: BriefData) -> list[str]:
+    items: list[str] = []
+    for note in data.departure_notes[:5]:
+        upper = note.upper()
+        if any(token in upper for token in ("CLSD", "CLOSED", "U/S", "CONST", "RAMP", "TWY", "TAXIWAY")):
+            items.append(f"Departure: {note}")
+    for note in data.destination_notes[:4]:
+        upper = note.upper()
+        if any(token in upper for token in ("CLSD", "CLOSED", "U/S", "CONST", "RAMP", "TWY", "TAXIWAY", "RWY")):
+            items.append(f"Arrival: {note}")
+    for note in data.alternate_notes[:3]:
+        items.append(f"Alternate: {note}")
+    return dedupe_preserve_order(items)[:8]
 
 
 def extract_turbulence_timing(data: BriefData) -> str:
@@ -1013,6 +1103,9 @@ def parse_brief(pdf_path: Path) -> BriefData:
     if any("RFFS" in note.upper() for note in data.alternate_notes):
         threats.append(f"{data.dispatch_alternate}: confirm ETOPS alternate suitability against RFFS hours")
     data.threats = dedupe_preserve_order(threats)
+    data.source_findings = build_source_findings(data)
+    data.flight_analysis = build_flight_analysis(data)
+    data.trip_kit_analysis = build_trip_kit_analysis(data)
     data.fa_discussion_points = build_fa_discussion_points(data)
     data.captain_discussion_points = build_captain_discussion_points(data)
     data.pilot_flying_points = build_pilot_flying_points(data)
@@ -1102,21 +1195,22 @@ def reference_777_review_items() -> list[str]:
 
 def build_fa_discussion_points(data: BriefData) -> list[str]:
     flight_time = f"{data.block} block" if data.block else "Block not extracted"
-    weather = data.weather_threats[0] if data.weather_threats else "Arrival weather is the main watch item"
-    turbulence = next((item for item in data.threats if "TURB" in item.upper()), "No turbulence note auto-detected")
+    weather = data.weather_threats[0] if data.weather_threats else extract_destination_weather_summary(data.raw_text, data.destination_icao or data.destination)
+    turbulence = next((item for item in data.threats if "TURB" in item.upper()), "")
     ride_timing = extract_turbulence_timing(data)
     cabin_items = summarize_aircraft_status(data)
     time_to_landing = data.eta_local_time or data.eta or "ETA not extracted"
 
     items = [
-        "Threat Lens: personal, environmental, technical; verify any riders onboard.",
+        f"Threat Lens: {data.route or 'route'}; personal, environmental, technical; verify riders onboard.",
         f"Time / Arrival: {flight_time}; planned arrival {time_to_landing}.",
         f"Ride Timing: {ride_timing}",
-        f"Weather / Ride: {weather}; {turbulence}.",
+        f"Weather / Ride: {sentence_fragment(weather)}" + (f"; {turbulence}." if turbulence else "."),
         f"Cabin / Overwater: {cabin_items}; ETOPS overwater segment, life vests apply.",
         f"T.E.S.T.: Type of Emergency, Evacuation, Special Instructions, Time To Landing {time_to_landing}.",
-        f"Dispatch Sector: {data.dispatch_sector or 'not shown in release; verify with dispatch if needed'}.",
     ]
+    if data.dispatch_sector:
+        items.append(f"Dispatch Sector: {data.dispatch_sector}.")
     items.extend(reference_turbulence_actions(data))
     return items
 
@@ -1125,20 +1219,16 @@ def build_captain_discussion_points(data: BriefData) -> list[str]:
     dep_airport = data.departure_icao or data.departure or "departure airport"
     taxi_plan = data.departure_notes[0] if data.departure_notes else f"Review current {dep_airport} taxi routing and closure impact"
     mx_status = summarize_aircraft_status(data)
-    air_return = (
-        f"{data.dispatch_alternate}: dispatch alternate listed; verify takeoff alternate / air return suitability."
-        if data.dispatch_alternate
-        else "No alternate extracted; verify takeoff alternate / air return plan."
-    )
+    air_return = f"{data.dispatch_alternate}: dispatch alternate listed; brief air return/diversion suitability." if data.dispatch_alternate else ""
 
     items = [
         f"Threat Lens / Duties: personal, environmental, technical; confirm PF/PM and relief roles; release {data.release_number or 'N/A'} for {data.flight or 'flight'} {data.route or ''}.".strip(),
         *(["Reference flow: release verification, fuel plan, maintenance, NOTAMs, taxi/hot spots, RTO/evacuation, and air return/takeoff alternate."] if reference_summary_is_active() else []),
         f"Fuel / Alternate: Min T/O {data.minimum_takeoff_fuel or 'N/A'}, T/O {data.takeoff_fuel or 'N/A'}, LDG {data.landing_fuel or 'N/A'}, FAR {data.far_reserve_fuel or 'N/A'}, conservative {data.conservative_fuel or 'N/A'}, alt {data.dispatch_alternate or 'N/A'}.",
-        f"Departure / Arrival Procedures: RWY {data.departure_runway or 'verify'} SID {data.departure_sid or 'verify'} | STAR {data.arrival_star or 'not shown'} RWY {data.arrival_runway or 'verify with ATIS'}.",
+        f"Departure / Arrival Procedures: RWY {data.departure_runway or 'not extracted'} SID {data.departure_sid or 'not extracted'} | STAR {data.arrival_star or 'not extracted'} RWY {data.arrival_runway or 'not extracted'}.",
         f"Mx / Pubs: {mx_status}; verify EFB, PEDs, and current pubs.",
         f"Taxi / NOTAMs: {taxi_plan}.",
-        f"RTO / Return: {FM_RTO} {air_return}",
+        f"RTO / Return: {FM_RTO}" + (f" {air_return}" if air_return else ""),
     ]
     if is_sfo_departure(data):
         items.append(f"Engine-Out: {SFO_ENGINE_OUT_PROCEDURE}")
@@ -1146,17 +1236,17 @@ def build_captain_discussion_points(data: BriefData) -> list[str]:
 
 
 def build_pilot_flying_points(data: BriefData) -> list[str]:
-    turbulence = next((item for item in data.threats if "TURB" in item.upper()), "No turbulence note auto-detected")
-    first_step = data.step_climbs[0] if data.step_climbs else "No step climb extracted"
+    turbulence = next((item for item in data.threats if "TURB" in item.upper()), "")
+    first_step = data.step_climbs[0] if data.step_climbs else ""
     dep_airport = data.departure_icao or data.departure or "departure airport"
     taxi_plan = data.departure_notes[0] if data.departure_notes else f"Review current {dep_airport} taxi routing, hotspots, and closure impact"
-    convective = next((item for item in data.threats if "CB" in item.upper() or "TS" in item.upper()), "No convective note auto-detected")
+    convective = next((item for item in data.threats if "CB" in item.upper() or "TS" in item.upper()), "")
     items = [
         "Threat Lens: personal, environmental, technical.",
         *(["Reference PF flow: clearance, departure review, terrain/obstacles, transition altitude, weather/windshear, takeoff data, engine-failure profile, and automation modes."] if reference_summary_is_active() else []),
         f"Departure / Taxi: {taxi_plan}.",
-        f"Weather / Climb: {turbulence}; {convective}.",
-        f"T/O Data / Profile: verify planned takeoff data, takeoff and engine-failure profile; first step {first_step}.",
+        "Weather / Climb: " + "; ".join(item for item in [turbulence, convective] if item) + ("." if turbulence or convective else "No convective/turbulence threat extracted from the uploaded docs."),
+        f"T/O Data / Profile: verify planned takeoff data, takeoff and engine-failure profile" + (f"; first step {first_step}." if first_step else "."),
         "Terrain / Automation: review terrain, obstacles, automation mode plan, transition altitude, and upset response.",
     ]
     if data.departure_gusty:
@@ -1167,18 +1257,18 @@ def build_pilot_flying_points(data: BriefData) -> list[str]:
 
 
 def build_arrival_brief_points(data: BriefData) -> list[str]:
-    weather = data.weather_threats[0] if data.weather_threats else "No arrival weather threat auto-detected"
-    dest_note = data.destination_notes[0] if data.destination_notes else "Review destination runway, taxi, and field condition NOTAMs"
+    weather = data.weather_threats[0] if data.weather_threats else extract_destination_weather_summary(data.raw_text, data.destination_icao or data.destination)
+    dest_note = data.destination_notes[0] if data.destination_notes else "No destination NOTAM snippet extracted from the uploaded docs"
     alt_note = (
         data.alternate_notes[0]
         if data.alternate_notes
-        else f"Alternate {data.dispatch_alternate}: no specific note extracted" if data.dispatch_alternate else "No alternate extracted"
+        else f"Alternate {data.dispatch_alternate}: listed in release; verify weather, approaches, suitability, and fuel" if data.dispatch_alternate else "No alternate extracted"
     )
     items = [
         "Threat Lens: personal, environmental, technical.",
         *(["Reference arrival flow: FMC, ATIS, NOTAMs/MEL, landing performance, runway condition, terrain, go-around, windshear/PWS, exit/taxi/hot spots."] if reference_summary_is_active() else []),
-        f"ATIS / Weather / Fuel: {weather}; planned landing {data.landing_fuel or 'N/A'}.",
-        f"Arrival / Runway / Taxi: STAR {data.arrival_star or 'not shown'}; runway {data.arrival_runway or 'verify with ATIS'}; {dest_note}.",
+        f"ATIS / Weather / Fuel: {sentence_fragment(weather)}; planned landing {data.landing_fuel or 'N/A'}.",
+        f"Arrival / Runway / Taxi: STAR {data.arrival_star or 'not extracted'}; runway {data.arrival_runway or 'not extracted'}; {dest_note}.",
         f"Stabilized Approach: {FM_STABILIZED_APPROACH}",
         f"Alternate / Go-Around: {alt_note}. {FM_GO_AROUND}",
         "Approach Setup: review FMC programming, transition level, terrain, windshear/PWS, and landing performance.",
@@ -1486,136 +1576,6 @@ def dedupe_crew_members(members: list[dict[str, str]]) -> list[dict[str, str]]:
     return result
 
 
-def parse_seniority_row(line: str) -> dict[str, str] | None:
-    clean = normalize_space(line)
-    match = re.match(
-        r"^(U\d{6})\s+(.+?)\s+(\d+)\s+(?:(LTA|SUP)\s+)?([A-Z]{3}\d{3}[A-Z]{2})\s+([A-Z]{3}\d{3}[A-Z]{2})\s+(\d+)\s+([0-9.]+)\s+([A-Z]+)",
-        clean,
-    )
-    if not match:
-        return None
-    return {
-        "employee_id": match.group(1),
-        "category_name": match.group(2),
-        "system_seniority": match.group(3),
-        "status": match.group(4) or "",
-        "starting_position": match.group(5),
-        "awarded_position": match.group(6),
-        "base_seniority": match.group(7),
-        "base_percentage": match.group(8),
-        "awardee_type": match.group(9),
-    }
-
-
-def load_seniority_by_employee_ids(employee_ids: set[str]) -> dict[str, dict[str, str]]:
-    if not employee_ids or not SENIORITY_SOURCE_PDF.exists():
-        return {}
-    found: dict[str, dict[str, str]] = {}
-    try:
-        reader = PdfReader(str(SENIORITY_SOURCE_PDF))
-        for page in reader.pages:
-            for line in (page.extract_text() or "").splitlines():
-                clean = normalize_space(line)
-                if not clean.startswith("U"):
-                    continue
-                employee_id = clean.split(" ", 1)[0]
-                if employee_id not in employee_ids:
-                    continue
-                row = parse_seniority_row(clean)
-                if row:
-                    found[employee_id] = row
-                if employee_ids.issubset(found.keys()):
-                    return found
-    except Exception:
-        return found
-    return found
-
-
-def load_seniority_cache_by_employee_ids(employee_ids: set[str]) -> dict[str, dict[str, str]]:
-    if not employee_ids or not SENIORITY_CACHE_PATH.exists():
-        return {}
-    try:
-        payload = json.loads(SENIORITY_CACHE_PATH.read_text())
-    except Exception:
-        return {}
-    employees = payload.get("employees", {})
-    return {
-        employee_id: employees[employee_id]
-        for employee_id in employee_ids
-        if employee_id in employees
-    }
-
-
-def parse_integrated_seniority_row(line: str) -> dict[str, str] | None:
-    clean = normalize_space(line)
-    match = re.match(
-        r"^(UA|CO)\s+(.+?)\s+0?(\d{5,6})\s+(\d{1,2}/\d{1,2}/\d{2})\s+(\d{1,2}/\d{1,2}/\d{2})\s+([A-Z]{3})\s+([0-9A-Z]{3})\s+([A-Z]{2})\s+(\d+)\s+([0-9.]+)%\s+(\d+)\s+([0-9.]+)%",
-        clean,
-    )
-    if not match:
-        return None
-    return {
-        "legacy_source": match.group(1),
-        "integrated_name": match.group(2),
-        "employee_number_legacy": match.group(3),
-        "date_of_birth": match.group(4),
-        "date_of_hire": match.group(5),
-        "isl_base": match.group(6),
-        "isl_equipment": match.group(7),
-        "isl_status": match.group(8),
-        "pre_merger_seniority": match.group(9),
-        "pre_merger_percentage": match.group(10),
-        "integrated_seniority": match.group(11),
-        "integrated_percentage": match.group(12),
-    }
-
-
-def load_integrated_seniority_by_employee_ids(employee_ids: set[str]) -> dict[str, dict[str, str]]:
-    if not employee_ids or not INTEGRATED_SENIORITY_SOURCE_PDF.exists():
-        return {}
-    employee_numbers = {employee_id.replace("U", "") for employee_id in employee_ids}
-    found: dict[str, dict[str, str]] = {}
-    try:
-        reader = PdfReader(str(INTEGRATED_SENIORITY_SOURCE_PDF))
-        for page in reader.pages:
-            for line in (page.extract_text() or "").splitlines():
-                clean = normalize_space(line)
-                if not (clean.startswith("UA ") or clean.startswith("CO ")):
-                    continue
-                for employee_number in list(employee_numbers):
-                    if re.search(rf"\b0?{re.escape(employee_number)}\b", clean):
-                        row = parse_integrated_seniority_row(clean)
-                        if row:
-                            found[f"U{employee_number}"] = row
-                        break
-                if employee_ids.issubset(found.keys()):
-                    return found
-    except Exception:
-        return found
-    return found
-
-
-def enrich_crew_with_seniority(members: list[dict[str, str]]) -> list[dict[str, str]]:
-    employee_ids = {member["employee_id"] for member in members if member.get("employee_id")}
-    cache = load_seniority_cache_by_employee_ids(employee_ids)
-    use_cache_only = SENIORITY_CACHE_PATH.exists()
-    missing_ids = set() if use_cache_only else employee_ids - set(cache)
-    seniority = load_seniority_by_employee_ids(missing_ids)
-    integrated = load_integrated_seniority_by_employee_ids(missing_ids)
-    enriched: list[dict[str, str]] = []
-    for member in members:
-        employee_id = member.get("employee_id", "")
-        row = cache.get(employee_id) or seniority.get(employee_id)
-        isl_row = {} if cache.get(employee_id) else integrated.get(employee_id, {})
-        enriched_member = dict(member)
-        if row:
-            enriched_member.update(row)
-        if isl_row:
-            enriched_member.update(isl_row)
-        enriched.append(enriched_member)
-    return enriched
-
-
 def apply_pairing_crew(data: BriefData, pairing_pdf: Path) -> None:
     duty_date, members = parse_pairing_crew(pairing_pdf, data.flight, data.trip_id)
     pickup_time, report_time = parse_pairing_times(pairing_pdf, data.flight)
@@ -1625,7 +1585,7 @@ def apply_pairing_crew(data: BriefData, pairing_pdf: Path) -> None:
         data.report_time = report_time
     if not members:
         return
-    data.crew_members = enrich_crew_with_seniority(members)
+    data.crew_members = members
     if not data.trip_id:
         for member in data.crew_members:
             if member.get("source_pairing"):
@@ -1670,6 +1630,9 @@ def apply_trip_kit_notes(data: BriefData, trip_kit_pdf: Path) -> None:
 
 
 def refresh_derived_brief_points(data: BriefData) -> None:
+    data.source_findings = build_source_findings(data)
+    data.flight_analysis = build_flight_analysis(data)
+    data.trip_kit_analysis = build_trip_kit_analysis(data)
     data.fa_discussion_points = build_fa_discussion_points(data)
     data.captain_discussion_points = build_captain_discussion_points(data)
     data.pilot_flying_points = build_pilot_flying_points(data)
@@ -1717,28 +1680,8 @@ def airport_10_7_notes(text: str, airport: str, limit: int = 6) -> list[str]:
     return dedupe_preserve_order(notes)
 
 
-def crew_seniority_note(member: dict[str, str]) -> str:
-    if member.get("system_seniority") and member.get("base_seniority"):
-        position = member.get("awarded_position") or member.get("starting_position") or ""
-        note = (
-            f"System {member['system_seniority']} / {position} base {member['base_seniority']} / "
-            f"{member.get('base_percentage', '--')}%"
-        )
-        if member.get("date_of_hire") or member.get("legacy_source"):
-            note += f" / DOH {member.get('date_of_hire', '--')} / Legacy {member.get('legacy_source', '--')}"
-        return note
-    if member.get("integrated_seniority"):
-        return (
-            f"ISL {member['integrated_seniority']} / {member.get('integrated_percentage', '--')}% / "
-            f"DOH {member.get('date_of_hire', '--')} / Legacy {member.get('legacy_source', '--')}"
-        )
-    if member.get("employee_id"):
-        return "Employee number from pairing; seniority not found in Category Summary or ISL"
-    return "Pairing source"
-
-
 def crew_table_rows(data: BriefData) -> list[list[str]]:
-    rows = [["Position", "Name", "Emp #", "Role", "Seniority / Base"]]
+    rows = [["Position", "Name", "Emp #", "Role", "Source"]]
     if data.crew_members:
         used_ids: set[str] = set()
         for role_prefix, position in [("CA", "CA"), ("FO", "FO"), ("FM", "FM")]:
@@ -1752,7 +1695,7 @@ def crew_table_rows(data: BriefData) -> list[list[str]]:
                     member.get("name", "--"),
                     member.get("employee_id", "--"),
                     member.get("role", "--"),
-                    crew_seniority_note(member) if role_prefix in {"CA", "FO"} else "Pairing source - cabin/flight manager seniority as available",
+                    "Pairing PDF",
                 ]
             )
         fa_members = [member for member in data.crew_members if member.get("role", "").startswith("FA")]
@@ -1763,7 +1706,7 @@ def crew_table_rows(data: BriefData) -> list[list[str]]:
                     "; ".join(member.get("name", "") for member in fa_members),
                     "see pairing",
                     "Cabin crew",
-                    "Use pairing for names; cabin seniority when available from cabin sources",
+                    "Pairing PDF",
                 ]
             )
         return rows
@@ -1820,6 +1763,21 @@ def render_text(data: BriefData) -> str:
             f"- Pickup {data.pickup_time or 'N/A'} | Report {data.report_time or 'N/A'}",
             f"- ETOPS {data.etops_minutes or 'N/A'} | Alt {data.dispatch_alternate or 'N/A'}",
             f"- Departure RWY {data.departure_runway or 'verify'} | SID {data.departure_sid or 'verify'} | STAR {data.arrival_star or 'not shown'} | Arrival RWY {data.arrival_runway or 'verify with ATIS'}",
+        ]
+    )
+    lines.extend(["", "Specific Flight Analysis"])
+    if data.flight_analysis:
+        lines.extend(f"- {item}" for item in data.flight_analysis)
+    else:
+        lines.append("- No specific operational analysis generated from the uploaded documents.")
+    if data.source_findings:
+        lines.extend(["", "Document Parse Check"])
+        lines.extend(f"- {item}" for item in data.source_findings)
+    if data.trip_kit_analysis:
+        lines.extend(["", "Trip Kit Watch Items"])
+        lines.extend(f"- {item}" for item in data.trip_kit_analysis)
+    lines.extend(
+        [
             "",
             "Fuel",
             f"- Minimum Takeoff {data.minimum_takeoff_fuel or 'N/A'}",
@@ -1892,10 +1850,14 @@ def render_text(data: BriefData) -> str:
         [
             "",
             "Bottom Line",
-            "- Clean airplane if no active MEL/CDL and dispatch items.",
-            "- Biggest risks are typically enroute ride, convective deviations, and destination weather/workload.",
         ]
     )
+    if data.flight_analysis:
+        lines.extend(f"- {item}" for item in data.flight_analysis[:2])
+    else:
+        lines.append("- Recheck official OFP, trip kit, ATIS, NOTAMs, FMS, and company manuals before use.")
+    if data.aircraft_notes:
+        lines.append(f"- Aircraft status: {summarize_aircraft_status(data)}.")
     return "\n".join(lines) + "\n"
 
 
@@ -2558,8 +2520,8 @@ def render_full_brief_pdf(_text_output: str, pdf_path: Path, title: str, data: B
 
     crew_detail_items = []
     for row in crew_table_rows(data)[1:]:
-        position, name, emp, role, seniority = row
-        crew_detail_items.append(f"{position}: {name} | {role} | Emp {emp} | {seniority}")
+        position, name, emp, role, source = row
+        crew_detail_items.append(f"{position}: {name} | {role} | Emp {emp} | {source}")
     panel("Crew Detail", crew_detail_items or ["Crew not loaded"], margin_x, top - 1.82 * inch, usable_w, 0.92 * inch, blue, light_gray, font_size=8.8)
 
     p_y = top - 3.02 * inch
@@ -2598,7 +2560,7 @@ def render_full_brief_pdf(_text_output: str, pdf_path: Path, title: str, data: B
 
     start_page("PAGE 2 - DEPARTURE PLAN")
     y = top - 0.56 * inch
-    panel("Threats First", threat_items(), margin_x, y, usable_w, 1.00 * inch, amber, light_amber, font_size=9.4)
+    panel("Threats First", (data.flight_analysis[:4] + threat_items(3))[:6], margin_x, y, usable_w, 1.00 * inch, amber, light_amber, font_size=9.4)
     y -= 1.24 * inch
     left_w = col_w
     dep_items = [
@@ -2859,6 +2821,9 @@ def update_catalog(data: BriefData, source_pdf: Path, txt_path: Path, pdf_path: 
         "etops_airports": data.etops_airports,
         "etops_cp_details": data.etops_cp_details,
         "dispatcher_notes": data.dispatcher_remarks,
+        "source_findings": data.source_findings,
+        "flight_analysis": data.flight_analysis,
+        "trip_kit_analysis": data.trip_kit_analysis,
         "fa_discussion_points": data.fa_discussion_points,
         "captain_discussion_points": data.captain_discussion_points,
         "pilot_flying_points": data.pilot_flying_points,

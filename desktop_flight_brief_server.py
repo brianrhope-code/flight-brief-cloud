@@ -43,7 +43,6 @@ LEGACY_REFERENCE_DIR = Path("/Users/brianhope/Desktop/Flight Plan/Gold Standard 
 REFERENCE_DIR = Path(
     os.environ.get("FLIGHT_BRIEF_REFERENCE_DIR", str(LOCAL_REFERENCE_DIR if LOCAL_REFERENCE_DIR.exists() else LEGACY_REFERENCE_DIR))
 ).expanduser()
-SENIORITY_SOURCE_PDF = REFERENCE_DIR / "Company" / "Category Summary June 2026.pdf"
 PHONE_PROJECT_NAME = "flight-briefs-brian-hope"
 PHONE_APP_URL = "https://flight-briefs-brian-hope-c6t.pages.dev/"
 CLOUD_MODE = os.environ.get("FLIGHT_BRIEF_CLOUD_MODE", "").lower() in {"1", "true", "yes"}
@@ -386,8 +385,6 @@ class Handler(BaseHTTPRequestHandler):
                     "output_dir": str(OUTPUT_DIR),
                     "reference_dir": str(REFERENCE_DIR),
                     "reference_dir_exists": REFERENCE_DIR.exists(),
-                    "seniority_source_pdf": str(SENIORITY_SOURCE_PDF),
-                    "seniority_source_exists": SENIORITY_SOURCE_PDF.exists(),
                     "time": datetime.now().isoformat(timespec="seconds"),
                 }
             )
@@ -1891,7 +1888,6 @@ class Handler(BaseHTTPRequestHandler):
     def read_reference_inventory(self) -> dict:
         categories = {
             "brief_reference_summary": [REFERENCE_DIR / "FUTURE_BRIEF_REFERENCE_SUMMARY.md"],
-            "seniority": [SENIORITY_SOURCE_PDF],
             "briefings": sorted((REFERENCE_DIR / "Briefings").glob("*")) if (REFERENCE_DIR / "Briefings").exists() else [],
             "aircraft_777": sorted((REFERENCE_DIR / "777").glob("*")) if (REFERENCE_DIR / "777").exists() else [],
             "company": sorted((REFERENCE_DIR / "Company").glob("*")) if (REFERENCE_DIR / "Company").exists() else [],
