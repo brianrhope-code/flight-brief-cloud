@@ -185,12 +185,32 @@ def build_command(pdf_path: Path, form: dict[str, str]) -> list[str]:
         "report_time": "--report-time",
         "pairing_pdf": "--pairing-pdf",
         "trip_kit_pdf": "--trip-kit-pdf",
+        "trip_kit_text": "--trip-kit-text",
     }
     for key, flag in field_map.items():
         value = (form.get(key) or "").strip()
         if value:
             command.extend([flag, value])
     return command
+
+
+def create_trip_kit_extract(flight_plan_path: Path, trip_kit_path: Path) -> tuple[Path, int]:
+    from generate_flight_release_brief import extract_trip_kit_relevant_text, parse_brief
+
+    data = parse_brief(flight_plan_path)
+    airports = [
+        data.departure_icao or data.departure,
+        data.destination_icao or data.destination,
+        data.dispatch_alternate,
+        *data.etops_airports,
+    ]
+    trip_text = extract_trip_kit_relevant_text(trip_kit_path, airports, max_pages=36)
+    if not trip_text.strip():
+        raise ValueError("No useful trip kit pages were found for this flight.")
+    extract_path = UPLOAD_DIR / f"{trip_kit_path.stem}-flight-extract.txt"
+    extract_path.write_text(trip_text, errors="replace")
+    page_count = len(re.findall(r"===== PAGE \d+ =====", trip_text))
+    return extract_path, page_count
 
 
 def parse_output_paths(stdout: str) -> dict[str, str]:
@@ -679,10 +699,18 @@ class Handler(BaseHTTPRequestHandler):
             if CLOUD_MODE and trip_kit_path.exists() and trip_kit_path.stat().st_size > CLOUD_TRIP_KIT_MAX_BYTES:
                 size_mb = trip_kit_path.stat().st_size / (1024 * 1024)
                 limit_mb = CLOUD_TRIP_KIT_MAX_BYTES / (1024 * 1024)
-                trip_kit_skipped = (
-                    f"Trip kit uploaded ({size_mb:.0f} MB) but skipped during cloud generation "
-                    f"to stay under the Render memory limit ({limit_mb:.0f} MB)."
-                )
+                try:
+                    extract_path, page_count = create_trip_kit_extract(upload_path, trip_kit_path)
+                    data_fields["trip_kit_text"] = str(extract_path)
+                    trip_kit_skipped = (
+                        f"Trip kit uploaded ({size_mb:.0f} MB). Used a {page_count}-page flight-specific extract "
+                        f"to stay under the Render memory limit ({limit_mb:.0f} MB)."
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    trip_kit_skipped = (
+                        f"Trip kit uploaded ({size_mb:.0f} MB) but skipped during cloud generation "
+                        f"to stay under the Render memory limit ({limit_mb:.0f} MB). Extract failed: {exc}"
+                    )
             else:
                 data_fields["trip_kit_pdf"] = supplemental_uploads["trip_kit"]["path"]
 

@@ -1648,16 +1648,7 @@ def apply_pairing_crew(data: BriefData, pairing_pdf: Path) -> None:
         data.flight_attendants = names_for("FA")
 
 
-def apply_trip_kit_notes(data: BriefData, trip_kit_pdf: Path) -> None:
-    if not trip_kit_pdf or not trip_kit_pdf.exists():
-        return
-    try:
-        trip_text = extract_trip_kit_relevant_text(
-            trip_kit_pdf,
-            [data.departure_icao or data.departure, data.destination_icao or data.destination],
-        )
-    except Exception:
-        return
+def apply_trip_kit_text(data: BriefData, trip_text: str) -> None:
     if not trip_text:
         return
     dep_notes = operational_notam_snippets(trip_text, data.departure_icao or data.departure)
@@ -1668,6 +1659,19 @@ def apply_trip_kit_notes(data: BriefData, trip_kit_pdf: Path) -> None:
         data.departure_notes = dedupe_preserve_order(dep_notes + data.departure_notes)
     if dest_notes:
         data.destination_notes = dedupe_preserve_order(dest_notes + data.destination_notes)
+
+
+def apply_trip_kit_notes(data: BriefData, trip_kit_pdf: Path) -> None:
+    if not trip_kit_pdf or not trip_kit_pdf.exists():
+        return
+    try:
+        trip_text = extract_trip_kit_relevant_text(
+            trip_kit_pdf,
+            [data.departure_icao or data.departure, data.destination_icao or data.destination],
+        )
+    except Exception:
+        return
+    apply_trip_kit_text(data, trip_text)
 
 
 def refresh_derived_brief_points(data: BriefData) -> None:
@@ -2900,6 +2904,7 @@ def main() -> None:
     parser.add_argument("--report-time", default="", help="Report time for the leg, usually local station time")
     parser.add_argument("--pairing-pdf", default="", help="Optional pairing PDF for crew and trip ID extraction")
     parser.add_argument("--trip-kit-pdf", default="", help="Optional trip kit PDF for NOTAM and 10-7 extraction")
+    parser.add_argument("--trip-kit-text", default="", help="Optional pre-extracted trip kit text for cloud-sized chart packages")
     args = parser.parse_args()
 
     pdf_path = Path(args.pdf).expanduser()
@@ -2921,7 +2926,12 @@ def main() -> None:
         apply_pairing_crew(data, Path(args.pairing_pdf).expanduser())
     if args.trip_kit_pdf:
         apply_trip_kit_notes(data, Path(args.trip_kit_pdf).expanduser())
-    if args.pairing_pdf or args.trip_kit_pdf:
+    if args.trip_kit_text:
+        try:
+            apply_trip_kit_text(data, Path(args.trip_kit_text).expanduser().read_text(errors="replace"))
+        except Exception:
+            pass
+    if args.pairing_pdf or args.trip_kit_pdf or args.trip_kit_text:
         refresh_derived_brief_points(data)
     txt_output = render_text(data)
     txt_path, out_pdf, full_pdf = build_output_paths(pdf_path, out_dir)
