@@ -394,9 +394,23 @@
         renderActiveUploads();
       }
 
+      function safeFillInput(input, value) {
+        if (!input || !value || input.value.trim()) return;
+        try {
+          input.value = value;
+        } catch (_error) {
+          try {
+            input.type = "text";
+            input.value = value;
+          } catch (_ignored) {
+            // Some mobile browsers reject airline-style times in time fields.
+          }
+        }
+      }
+
       function applyGeneratedTimes(result) {
-        if (pickupInput && result?.pickup_time && !pickupInput.value.trim()) pickupInput.value = result.pickup_time;
-        if (reportInput && result?.report_time && !reportInput.value.trim()) reportInput.value = result.report_time;
+        safeFillInput(pickupInput, result?.pickup_time);
+        safeFillInput(reportInput, result?.report_time);
       }
 
       function buildGenerateFormData() {
@@ -1113,10 +1127,15 @@
             setLog("Generating brief in the cloud...\nUpload received. Waiting for the PDFs to finish.");
             payload = await waitForGenerateJob(payload.job_id);
           }
-          applyActiveUploads(payload.result?.active_uploads || payload.result?.uploads || activeUploads);
-          applyGeneratedTimes(payload.result);
-          summarize(payload.result);
-          if (!applyTimelineFromResult(payload.result)) await loadTimeline();
+          try {
+            applyActiveUploads(payload.result?.active_uploads || payload.result?.uploads || activeUploads);
+            applyGeneratedTimes(payload.result);
+            summarize(payload.result);
+            if (!applyTimelineFromResult(payload.result)) await loadTimeline();
+          } catch (displayError) {
+            summarize(payload.result);
+            setLog(`Brief generated, but the page display needs refresh.\n${displayError.message || displayError}`);
+          }
           if (isLocalMacApp()) {
             setLog("Brief generated. Publishing to iPhone/iPad...");
             generateBtn.textContent = "Publishing...";
