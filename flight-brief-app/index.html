@@ -449,14 +449,29 @@
       }
 
       async function postJson(url, options = {}) {
-        const response = await fetch(url, options);
-        const payload = await response.json();
+        let response;
+        try {
+          response = await fetch(apiUrl(url), options);
+        } catch (error) {
+          throw new Error(`Network request failed for ${url}: ${error.message || error}`);
+        }
+        const text = await response.text();
+        let payload;
+        try {
+          payload = text ? JSON.parse(text) : {};
+        } catch (_error) {
+          throw new Error(`Server returned unreadable response for ${url}: ${text.slice(0, 180) || response.status}`);
+        }
         if (!payload.ok) throw new Error(payload.error || "Request failed");
         return payload;
       }
 
       function sleep(ms) {
         return new Promise((resolve) => setTimeout(resolve, ms));
+      }
+
+      function apiUrl(path) {
+        return new URL(path, window.location.href).toString();
       }
 
       async function uploadCloudFile(slot, file, label) {
@@ -467,7 +482,12 @@
         for (let index = 0; index < total; index += 1) {
           const start = index * chunkSize;
           const chunk = file.slice(start, Math.min(file.size, start + chunkSize));
-          const url = `/api/upload-chunk?slot=${encodeURIComponent(slot)}&filename=${encodeURIComponent(file.name)}&upload_id=${encodeURIComponent(uploadId)}&index=${index}&total=${total}`;
+          const uploadUrl = new URL("/api/upload-chunk", window.location.href);
+          uploadUrl.searchParams.set("slot", slot);
+          uploadUrl.searchParams.set("filename", file.name || `${slot}.pdf`);
+          uploadUrl.searchParams.set("upload_id", uploadId);
+          uploadUrl.searchParams.set("index", String(index));
+          uploadUrl.searchParams.set("total", String(total));
           let payload = null;
           let lastError = null;
           for (let attempt = 1; attempt <= 5; attempt += 1) {
@@ -476,7 +496,7 @@
                 `Uploading ${label}...\nChunk ${index + 1} of ${total}` +
                 (attempt > 1 ? `\nRetry ${attempt - 1} of 4 for this chunk.` : "")
               );
-              const response = await fetch(url, {
+              const response = await fetch(uploadUrl.toString(), {
                 method: "POST",
                 headers: { "Content-Type": "application/octet-stream" },
                 body: chunk,
@@ -1110,14 +1130,17 @@
             : "Generating brief..."
         );
         let timeoutId = null;
+        let currentStep = "preparing";
         try {
           if (isCloudBuilder()) {
+            currentStep = "uploading selected files";
             await uploadSelectedCloudFiles();
             data = buildGenerateFieldsFormData();
           }
           const controller = new AbortController();
           const generateTimeoutMs = isCloudBuilder() ? 60000 : 180000;
           timeoutId = setTimeout(() => controller.abort(), generateTimeoutMs);
+          currentStep = "starting cloud generation";
           let payload = await postJson("/api/generate", {
             method: "POST",
             body: data,
@@ -1125,9 +1148,11 @@
           });
           if (payload.job_id) {
             setLog("Generating brief in the cloud...\nUpload received. Waiting for the PDFs to finish.");
+            currentStep = "waiting for cloud generation";
             payload = await waitForGenerateJob(payload.job_id);
           }
           try {
+            currentStep = "updating page with finished brief";
             applyActiveUploads(payload.result?.active_uploads || payload.result?.uploads || activeUploads);
             applyGeneratedTimes(payload.result);
             summarize(payload.result);
@@ -1155,7 +1180,7 @@
         } catch (error) {
           const message = error.name === "AbortError"
             ? "The upload took longer than expected before the cloud accepted it. Try again on Wi-Fi, or try the flight plan and pairing first, then add the trip kit."
-            : `Generation failed.\n${error.message}`;
+            : `Generation failed while ${currentStep}.\n${error.message}`;
           setLog(message);
         } finally {
           if (timeoutId) clearTimeout(timeoutId);
